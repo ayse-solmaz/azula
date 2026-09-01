@@ -1,0 +1,8 @@
+{
+  "train_accuracy": [0.72, 0.81, 0.89, 0.94],
+  "val_accuracy": [0.74, 0.71, 0.65, 0.61],
+  "train_loss": [0.62, 0.41, 0.28, 0.19],
+  "val_loss": [0.58, 0.55, 0.62, 0.71],
+  "epochs_completed": 3,
+  "notes": "Validation accuracy declining after epoch 2 — possible overfitting or data quality issue. Training stopped due to OOM at epoch 3."
+}

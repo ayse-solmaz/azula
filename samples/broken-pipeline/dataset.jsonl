@@ -1,0 +1,8 @@
+{"customer_status": 1, "purchase_count": 12, "days_since_signup": 45, "label": 0}
+{"customer_status": 2, "purchase_count": 3, "days_since_signup": 120, "label": 1}
+{"customer_status": "premium", "purchase_count": 28, "days_since_signup": 10, "label": 0}
+{"customer_status": 1, "purchase_count": 7, "days_since_signup": 200, "label": 1}
+{"customer_status": "active_new", "purchase_count": 1, "days_since_signup": 2, "label": 0}
+{"customer_status": 3, "purchase_count": 15, "days_since_signup": 60, "label": 1}
+{"customer_status": "2", "purchase_count": 9, "days_since_signup": 90, "label": 0}
+{"customer_status": 1, "purchase_count": 22, "days_since_signup": 30, "label": 1}

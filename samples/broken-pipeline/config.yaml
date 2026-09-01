@@ -1,0 +1,19 @@
+model:
+  name: classifier_v2
+  batch_size: 128        # too large for 8GB GPU
+  learning_rate: 0.1     # too high — causes instability
+  epochs: 10
+  optimizer: adam
+
+data:
+  train_path: dataset.jsonl
+  val_split: 0.2
+  features:
+    - customer_status    # problematic — mixed int/string values
+    - purchase_count
+    - days_since_signup
+
+training:
+  device: cuda:0
+  num_workers: 4
+  checkpoint_dir: checkpoints/

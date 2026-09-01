@@ -27,6 +27,11 @@ Supporting specs:
 - [Onboarding](docs/ONBOARDING.md)
 - [Monetization](docs/MONETIZATION.md)
 - [Analytics](docs/ANALYTICS.md)
+- [MCP Integration](docs/MCP.md)
+
+## Sample Pipeline
+
+Onboarding demo files: [`samples/broken-pipeline/`](samples/broken-pipeline/)
 
 ## Tech Stack (Planned)
 
@@ -46,5 +51,12 @@ MCP Connectors (Files, Git, Database)
 
 ## Agent Guidance
 
-- Cursor rules: [.cursor/rules/azula.md](.cursor/rules/azula.md)
+- Cursor rules: [.cursor/rules/azula.mdc](.cursor/rules/azula.mdc)
 - Investigation skill: [.cursor/skills/azula-investigation/SKILL.md](.cursor/skills/azula-investigation/SKILL.md)
+
+## Setup
+
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+```
