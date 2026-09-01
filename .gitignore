@@ -15,6 +15,7 @@ out/
 # Logs
 *.log
 logs/
+!samples/**/*.log
 
 # OS
 .DS_Store

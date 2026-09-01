@@ -1,0 +1,12 @@
+2026-08-28 14:02:11 INFO  Starting training run: classifier_v2
+2026-08-28 14:02:12 INFO  Loading dataset from dataset.jsonl
+2026-08-28 14:02:13 WARNING Column 'customer_status' has unseen categories: ['premium', '2', 'active_new']
+2026-08-28 14:02:14 WARNING Schema validation failed: expected int, got string at row 1204
+2026-08-28 14:02:15 INFO  Feature engineering complete — 48,203 rows
+2026-08-28 14:02:18 INFO  Model initialized on cuda:0
+2026-08-28 14:02:19 INFO  Epoch 1/10 — train_loss: 0.62 — val_accuracy: 0.74
+2026-08-28 14:02:31 INFO  Epoch 2/10 — train_loss: 0.41 — val_accuracy: 0.71
+2026-08-28 14:02:44 INFO  Epoch 3/10 — train_loss: 0.28 — val_accuracy: 0.61 (↓ from 0.74)
+2026-08-28 14:02:57 ERROR CUDA out of memory. Tried to allocate 2.00 GiB (GPU 0; 8.00 GiB total capacity)
+2026-08-28 14:02:57 ERROR Training aborted at epoch 3
+2026-08-28 14:02:58 INFO  Checkpoint saved: checkpoints/epoch_2.pt
