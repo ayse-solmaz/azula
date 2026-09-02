@@ -1,0 +1,17 @@
+base_model: Qwen/Qwen2.5-1.5B-Instruct
+method: qlora
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+target_modules:
+  - q_proj
+  - v_proj
+  - k_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+epochs: 2
+batch_size: 4
+learning_rate: 2.0e-4
+max_seq_length: 1024

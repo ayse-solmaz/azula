@@ -31,7 +31,8 @@ Thumbs.db
 coverage/
 .nyc_output/
 
-# Misc
-*.local
-.turbo/
-.cache/
+adapters/
+output/
+__pycache__/
+*.pyc
+.venv/
