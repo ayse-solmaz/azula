@@ -97,7 +97,7 @@ func main() {
 	srv.Use(extension.AutomaticPersistedQuery{Cache: lru.New[string](100)})
 
 	mux := http.NewServeMux()
-	mux.Handle("/graphql", httpx.RateLimit(120, auth.Middleware(cfg.JWTSecret, srv)))
+	mux.Handle("/graphql", httpx.RateLimit(120, httpx.RestoreGraphQLCamelCase(auth.Middleware(cfg.JWTSecret, srv))))
 	mux.Handle("/", playground.Handler("Azula GraphQL", "/graphql"))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -146,7 +146,10 @@ func withCORS(webURL string, next http.Handler) http.Handler {
 }
 
 func originAllowed(webURL, origin string) bool {
-	if origin == webURL || origin == "http://localhost:3000" || origin == "http://localhost:5173" {
+	if origin == webURL ||
+		origin == "http://localhost:3000" || origin == "http://127.0.0.1:3000" ||
+		origin == "http://localhost:3001" || origin == "http://127.0.0.1:3001" ||
+		origin == "http://localhost:5173" || origin == "http://127.0.0.1:5173" {
 		return true
 	}
 	// Packaged Electron loadFile uses a null / file origin while calling the local API.

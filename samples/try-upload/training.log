@@ -1,0 +1,23 @@
+2026-09-03 22:14:01 INFO  job=ranker-nightly env=prod-ml-01 run_id=job_8f2c91
+2026-09-03 22:14:02 INFO  Starting training: search_ranker_v4 (pytorch 2.4, cuda 12.4)
+2026-09-03 22:14:03 INFO  Loading features from feature_store://search/user_context@latest
+2026-09-03 22:14:04 WARN  Feature store lag: user_context last_updated_at=2026-08-27T03:11:00Z (7d 19h stale vs SLA 2h)
+2026-09-03 22:14:05 INFO  Loading labels from warehouse.events.clicks_hourly partition=2026-09-03
+2026-09-03 22:14:08 INFO  Joined train set: 2,184,331 rows  |  val: 241,008 rows
+2026-09-03 22:14:09 WARN  Schema drift on column user_segment: expected enum {new,returning,vip} got values {new,returning,vip,trial,2,unknown}
+2026-09-03 22:14:09 WARN  18,442 rows coerced user_segment='2' via astype(str); encoder vocab frozen from 2026-08-01
+2026-09-03 22:14:11 INFO  Feature columns (52): query_emb, item_emb, hist_clicks_7d, last_purchase_ts, user_segment, is_logged_in, clicked_in_session
+2026-09-03 22:14:12 WARN  Possible target leakage: clicked_in_session Pearson(label)=0.91 on train; 0.12 on val
+2026-09-03 22:14:13 INFO  Dropped? no — column still in training_features (config.yaml feature_include)
+2026-09-03 22:14:14 INFO  batch_size=512  grad_accum=4  mixed_precision=bf16  gpu=NVIDIA RTX 4070 12GiB
+2026-09-03 22:14:18 INFO  Epoch 1/8  train_loss=0.412  val_ndcg@10=0.381  val_auc=0.71
+2026-09-03 22:16:02 INFO  Epoch 2/8  train_loss=0.198  val_ndcg@10=0.344  val_auc=0.66  (val dropping)
+2026-09-03 22:17:41 INFO  Epoch 3/8  train_loss=0.074  val_ndcg@10=0.291  val_auc=0.58
+2026-09-03 22:17:42 WARN  Early overfitting: train_auc=0.99 val_auc=0.58 gap=0.41
+2026-09-03 22:18:09 ERROR CUDA out of memory. Tried to allocate 1.75 GiB (GPU 0; 12.00 GiB total, 10.41 GiB already allocated)
+2026-09-03 22:18:09 ERROR   File "train_ranker.py", line 214, in fit
+2026-09-03 22:18:09 ERROR     logits = model(batch.features)
+2026-09-03 22:18:09 ERROR RuntimeError: CUDA error: out of memory
+2026-09-03 22:18:10 ERROR Training aborted at epoch 3/8. Last ckpt: s3://ml-artifacts/ranker/v4/epoch_2.pt
+2026-09-03 22:18:11 INFO  Operator note: bumped batch_size 256→512 this morning to "speed up nightly". Did not re-run schema checks.
+2026-09-03 22:18:12 INFO  PagerDuty: ML-ONCALL #4821  service=search-ranker  severity=SEV-2

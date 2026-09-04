@@ -2,6 +2,7 @@ package projectsvc
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -89,7 +90,7 @@ func (s *Service) CreateProject(ctx context.Context, userID, workspaceID, name s
 			return nil, err
 		}
 		if int(count) >= s.maxFree {
-			return nil, domain.ErrTierLimit
+			return nil, fmt.Errorf("%w: free tier allows %d projects — upload into an existing project or raise FREE_TIER_MAX_PROJECTS", domain.ErrTierLimit, s.maxFree)
 		}
 	}
 

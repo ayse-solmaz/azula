@@ -59,7 +59,16 @@ export async function gql<T>(
   });
   const json = await res.json();
   if (json.errors?.length) {
-    throw new Error((json.errors as GqlError[]).map((e) => e.message).join("; "));
+    const msg = (json.errors as GqlError[]).map((e) => e.message).join("; ");
+    const onLogin = window.location.pathname.startsWith("/login");
+    if (!onLogin && /unauthorized/i.test(msg)) {
+      setToken(null);
+      window.location.replace("/login");
+    }
+    if (json.data && Object.values(json.data as object).some((v) => v != null)) {
+      return json.data as T;
+    }
+    throw new Error(msg);
   }
   return json.data as T;
 }

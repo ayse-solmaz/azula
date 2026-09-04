@@ -5,7 +5,8 @@ export default defineConfig({
   plugins: [react()],
   base: process.env.ELECTRON === "1" ? "./" : "/",
   server: {
-    port: 3000,
+    port: 3001,
+    strictPort: true,
     proxy: {
       "/graphql": "http://localhost:8080",
     },

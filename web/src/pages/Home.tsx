@@ -258,10 +258,13 @@ export default function HomePage() {
                   <input
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="new project name"
+                    placeholder="e.g. search-ranker-sev2"
                     required
                   />
                 </label>
+                <p className="hint">
+                  name is just a label. the error below is a free-tier cap on how many projects you can own, not the name itself.
+                </p>
                 <div className="row-actions">
                   <button type="submit" disabled={busy}>
                     create project

@@ -2,6 +2,13 @@ import { FormEvent, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { AuditLog, ConsentRecord, forgetLocalDevice, getDeviceId, gql, Organization, User } from "../api";
 
+const ME_CORE = `
+  me { id email mfaEnabled tier orgId orgName orgRole }
+  myConsent { purpose accepted createdAt }
+  myOrganization { id name members { email role userId } }
+  auditLogs { id action resource createdAt }
+`;
+
 const ME_QUERY = `query {
   me { id email mfaEnabled tier orgId orgName orgRole trustedDevices { id name createdAt lastSeenAt } }
   myConsent { purpose accepted createdAt }
@@ -24,16 +31,28 @@ export default function SecurityPage() {
   const [consent, setConsent] = useState<ConsentRecord | null>(null);
 
   async function load() {
-    const data = await gql<{
+    setError("");
+    type Payload = {
       me: User;
       myConsent: ConsentRecord | null;
       myOrganization: Organization | null;
       auditLogs: AuditLog[];
-    }>(ME_QUERY);
-    setUser(data.me);
-    setConsent(data.myConsent);
-    setOrg(data.myOrganization);
-    setLogs(data.auditLogs || []);
+    };
+    try {
+      const data = await gql<Payload>(ME_QUERY);
+      setUser(data.me);
+      setConsent(data.myConsent);
+      setOrg(data.myOrganization);
+      setLogs(data.auditLogs || []);
+      return;
+    } catch (first) {
+      const data = await gql<Payload>(`query { ${ME_CORE} }`);
+      setUser({ ...data.me, trustedDevices: data.me.trustedDevices || [] });
+      setConsent(data.myConsent);
+      setOrg(data.myOrganization);
+      setLogs(data.auditLogs || []);
+      setError(first instanceof Error ? first.message : "Partial load");
+    }
   }
 
   useEffect(() => {
@@ -147,7 +166,23 @@ export default function SecurityPage() {
     }
   }
 
-  if (!user) return <p className="page">{error || "loading…"}</p>;
+  if (!user) {
+    return (
+      <div className="page">
+        <section className="panel">
+          <h2>security</h2>
+          <p className="feed-lead">
+            this page is mfa, trusted devices, gdpr export/delete, org invite, and the audit log. it needs a live graphql
+            session — hard-refresh after the api restarts.
+          </p>
+          {error ? <p className="error">{error}</p> : <p>loading…</p>}
+          <button type="button" onClick={() => void load().catch((e) => setError(e.message))}>
+            retry
+          </button>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="page">
