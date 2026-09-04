@@ -8,9 +8,20 @@ node_modules/
 
 # Build
 dist/
+electron/dist/
+electron/web/
+*.safetensors
 build/
 .next/
 out/
+bin/
+bin/
+*.exe
+
+# Uploads / local data
+uploads/
+data/outbox/
+.tools/
 
 # Logs
 *.log
@@ -31,8 +42,14 @@ Thumbs.db
 coverage/
 .nyc_output/
 
-adapters/
+# Local QLoRA / merge weights (multi-GB). Keep Modelfile in git.
+adapters/*
+!adapters/azula-incident/
+adapters/azula-incident/*
+!adapters/azula-incident/Modelfile
+!adapters/azula-incident/README.md
 output/
 __pycache__/
 *.pyc
 .venv/
+.venv-merge/

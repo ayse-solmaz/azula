@@ -14,12 +14,13 @@ import argparse
 import json
 import os
 import shutil
+import sys
 import zipfile
 from pathlib import Path
 
 import torch
 from datasets import Dataset
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -30,6 +31,32 @@ from trl import SFTTrainer
 
 
 DEFAULT_BASE = "Qwen/Qwen2.5-1.5B-Instruct"
+DTYPE_MAP = {
+    "float16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "float32": torch.float32,
+}
+
+
+def _bf16_ok() -> bool:
+    return bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported())
+
+
+def _resolve_compute_dtype(requested: str) -> torch.dtype:
+    """Qwen2.5 is natively bf16. Prefer that on Ampere+; never mix fp16 GradScaler with bf16 grads."""
+    if requested == "float16" and _bf16_ok():
+        return torch.bfloat16
+    if requested == "bfloat16" and not _bf16_ok():
+        return torch.float16
+    return DTYPE_MAP[requested]
+
+
+def _amp_kwargs() -> dict[str, bool]:
+    # fp16=True enables GradScaler, which crashes on bf16 grads:
+    # NotImplementedError: _amp_foreach_non_finite_check_and_unscale_cuda ... BFloat16
+    if _bf16_ok():
+        return {"fp16": False, "bf16": True}
+    return {"fp16": False, "bf16": False}
 
 
 def _make_sft_trainer(model, tokenizer, dataset, training_args):
@@ -80,14 +107,17 @@ def train(
     epochs: int = 2,
     batch_size: int = 4,
     lora_r: int = 16,
+    torch_dtype: str = "float16",
 ) -> None:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    compute_dtype = _resolve_compute_dtype(torch_dtype)
+
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_compute_dtype=compute_dtype,
         bnb_4bit_use_double_quant=True,
     )
 
@@ -100,6 +130,7 @@ def train(
         device_map="auto",
         trust_remote_code=True,
     )
+    model.config.use_cache = False
     model = prepare_model_for_kbit_training(model)
 
     lora_config = LoraConfig(
@@ -115,18 +146,26 @@ def train(
 
     dataset = load_jsonl(dataset_path).map(format_prompt)
 
-    training_args = TrainingArguments(
-        output_dir=str(out / "checkpoints"),
-        num_train_epochs=epochs,
-        per_device_train_batch_size=batch_size,
-        gradient_accumulation_steps=4,
-        learning_rate=2e-4,
-        fp16=True,
-        logging_steps=5,
-        save_strategy="epoch",
-        optim="paged_adamw_8bit",
-        report_to="none",
-    )
+    args_kwargs = {
+        "output_dir": str(out / "checkpoints"),
+        "num_train_epochs": epochs,
+        "per_device_train_batch_size": batch_size,
+        "gradient_accumulation_steps": 4,
+        "learning_rate": 2e-4,
+        "logging_steps": 5,
+        "save_strategy": "epoch",
+        "optim": "paged_adamw_8bit",
+        "report_to": "none",
+        "gradient_checkpointing": True,
+        **_amp_kwargs(),
+    }
+    try:
+        training_args = TrainingArguments(
+            **args_kwargs,
+            gradient_checkpointing_kwargs={"use_reentrant": False},
+        )
+    except TypeError:
+        training_args = TrainingArguments(**args_kwargs)
 
     trainer = _make_sft_trainer(model, tokenizer, dataset, training_args)
 
@@ -136,12 +175,32 @@ def train(
     model.save_pretrained(adapter_dir)
     tokenizer.save_pretrained(adapter_dir)
 
-    # Merge for Ollama / local inference (optional, needs RAM)
+    # Merge on a fresh fp16 base. Merging the 4-bit QLoRA graph leaves bitsandbytes
+    # tensors that Ollama cannot convert to GGUF.
     merged_dir = out / "merged"
     try:
-        merged = model.merge_and_unload()
-        merged.save_pretrained(merged_dir)
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        fp16_base = AutoModelForCausalLM.from_pretrained(
+            base_model,
+            torch_dtype=torch.float16,
+            device_map="cpu",
+            trust_remote_code=True,
+        )
+        peft_m = PeftModel.from_pretrained(fp16_base, adapter_dir)
+        merged = peft_m.merge_and_unload()
+        if hasattr(merged.config, "quantization_config"):
+            merged.config.quantization_config = None
+        merged.save_pretrained(merged_dir, safe_serialization=True)
         tokenizer.save_pretrained(merged_dir)
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from ollama_config import patch_config_for_ollama
+
+            patch_config_for_ollama(merged_dir / "config.json")
+        except Exception as patch_err:
+            print(f"Ollama config patch skipped: {patch_err}")
         print(f"Merged model saved to {merged_dir}")
     except Exception as e:
         print(f"Merge skipped (adapter still usable): {e}")
@@ -178,6 +237,14 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--lora-r", type=int, default=16)
+    parser.add_argument(
+        "--torch-dtype",
+        "--torch_dtype",
+        dest="torch_dtype",
+        default="float16",
+        choices=sorted(DTYPE_MAP),
+        help="QLoRA compute dtype. T4/Colab: float16 (default). Do not pass this to from_pretrained with 4-bit.",
+    )
     args = parser.parse_args()
 
     if not Path(args.dataset).exists():
@@ -190,6 +257,7 @@ def main() -> None:
         epochs=args.epochs,
         batch_size=args.batch_size,
         lora_r=args.lora_r,
+        torch_dtype=args.torch_dtype,
     )
 
 

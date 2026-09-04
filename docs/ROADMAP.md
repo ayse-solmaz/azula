@@ -1,6 +1,10 @@
 # Azula — Product Roadmap
 
-**Last updated:** 2026-09-01
+**Last updated:** 2026-09-04
+
+Product is **ahead of this file’s old empty checkboxes**. Phase 1 Investigate + Council is implemented in Go/GraphQL/web. Delivery-spec items (MFA, trusted devices, GDPR, Electron, QLoRA) were pulled forward for the jury date. They are marked below where they exist in code.
+
+**Still deferred on purpose:** Generate, Evaluate, Git MCP, payments/Stripe, SSO/SAML, Kubernetes / multi-region.
 
 ---
 
@@ -24,32 +28,33 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 
 ### Deliverables
 
-- [ ] Auth (email/password)
-- [ ] Workspace + Project CRUD
-- [ ] File upload (MCP Files connector)
-- [ ] Onboarding with sample broken pipeline
-- [ ] Investigate mode: Fast → Deep → Council
-- [ ] Investigation results UI (root cause, evidence, fix)
-- [ ] Investigation history
-- [ ] Basic analytics dashboard
-- [ ] MongoDB persistence
-- [ ] GraphQL API
-- [ ] Free tier limits (config-enforced)
-- [ ] Cursor rules + investigation skill
+- [x] Auth (email/password)
+- [x] Workspace + Project CRUD
+- [x] File upload (MCP Files connector)
+- [x] Onboarding with sample broken pipeline
+- [x] Investigate mode: Fast → Deep → Council
+- [x] Investigation results UI (root cause, evidence, fix)
+- [x] Investigation history
+- [x] Basic analytics dashboard (LLMOps counts, avg confidence, top causes)
+- [x] MongoDB persistence
+- [x] GraphQL API
+- [x] Free tier limits (config-enforced project cap)
+- [x] Cursor rules + investigation skill
+- [x] Electron desktop — Windows pack (`scripts/pack-electron.ps1`); Mac DMG on macOS/CI only (`scripts/pack-electron.sh`)
 
 ### Success Criteria
 
-- Demo pipeline: signup → root cause < 60s
-- Council structured output > 90%
-- 5 concurrent users without degradation
+- Demo pipeline: signup → root cause < 60s (live Ollama Fast + Deep)
+- Council structured JSON (`agreements`, `disagreements`, `finalJudgment`)
+- 5 concurrent users: `go run ./scripts/loadtest.go` against a running API (worker pool, not device-limit proof)
 
-### Not in MVP
+### Not in MVP (unchanged)
 
 - Payment integration
 - Generate / Evaluate modes
 - Git MCP
-- Team features
-- Enterprise security
+- Full team RBAC / SSO
+- Kubernetes / horizontal scale
 
 ---
 
@@ -63,11 +68,11 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 - [ ] **Generate mode** — synthetic dataset from investigation context
 - [ ] **Evaluate mode** — compare original vs fixed dataset metrics
 - [ ] **Git MCP connector** — clone, blame, diff
-- [ ] Version diff UI (compare file versions across investigations)
+- [x] Version diff UI (compare / swap file versions on the project page)
 - [ ] Pro tier UI gates (upgrade prompts)
-- [ ] Model selection (choose Fast/Deep/Judge models)
-- [ ] Full analytics dashboard (Council metrics, model comparison)
-- [ ] Investigation export (PDF/JSON)
+- [x] Model selection (Fast/Deep names, temperature, role prompts on LLM dashboard)
+- [ ] Full analytics dashboard (Council metrics, model comparison) — LLMOps subset shipped
+- [ ] Investigation export (PDF) — GDPR JSON export exists, not PDF
 
 ### Success Criteria
 
@@ -84,12 +89,12 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 
 ### Deliverables
 
-- [ ] Team workspaces (invite members)
-- [ ] Role-based access: Admin, Engineer, Viewer
-- [ ] Shared investigation history
+- [x] Team workspaces (org create + email invite — delivery stub, not full product)
+- [x] Role-based access: Admin, Engineer, Viewer (org role; not a complete permission matrix)
+- [x] Shared investigation history (org workspace)
 - [ ] Payment integration (Stripe)
 - [ ] Pro tier activation
-- [ ] Email notifications (investigation complete, limit warnings)
+- [ ] Email notifications (investigation complete, limit warnings) — device OTP email only
 - [ ] Improved onboarding for team admins
 
 ### Success Criteria
@@ -107,16 +112,16 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 
 ### Deliverables
 
-- [ ] MFA + trusted devices
-- [ ] Audit logs (all actions)
-- [ ] GDPR / KVKK: data export, deletion, residency options
+- [x] MFA + trusted devices (pulled into jury delivery)
+- [x] Audit logs (auth, investigation, GDPR events)
+- [x] GDPR / KVKK: consent, export, account deletion (residency options not shipped)
 - [ ] API access with scoped tokens
-- [ ] Custom / LoRA model support
+- [x] Custom / LoRA model support (QLoRA trainer + Ollama import)
 - [ ] Private MCP connectors (internal repos, databases)
 - [ ] Custom Council lineup (2–8 models)
-- [ ] Higher concurrent user limits
-- [ ] SSO (SAML/OIDC) — if required by early enterprise customers
-- [ ] Electron desktop app (optional)
+- [ ] Higher concurrent user limits (fixed 5 worker slots)
+- [ ] SSO (SAML/OIDC)
+- [x] Electron desktop app — Windows installer locally; Mac unsigned DMG via macOS or GitHub Actions
 - [ ] SLA and dedicated support tooling
 
 ### Success Criteria
@@ -135,9 +140,9 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 ### Deliverables
 
 - [ ] Job queue for long investigations (Bull/Redis)
-- [ ] Worker pool behind load balancer
+- [ ] Worker pool behind load balancer / Kubernetes
 - [ ] Response caching
-- [ ] Multi-provider model routing (OpenAI, Anthropic, local, custom)
+- [x] Multi-provider model routing (OpenAI + Ollama; Anthropic/Gemini not wired)
 - [ ] MongoDB replica set
 - [ ] Dedicated inference workers
 - [ ] User-configurable Council (GPT + Claude + Gemini + Llama)
@@ -166,8 +171,13 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 | Audit logs | | | | ✓ | ✓ |
 | API | | | | ✓ | ✓ |
 | Custom models | | | | ✓ | ✓ |
+| Electron | ✓ (Win pack; Mac on macOS/CI) | ✓ | ✓ | ✓ | ✓ |
 | Job queue | | | | | ✓ |
 | Multi-provider | | | | | ✓ |
+| SSO | | | | ✓ | ✓ |
+| Kubernetes | | | | | ✓ |
+
+MFA, audit, GDPR export/delete, org invite, and LoRA shipped early for the 6 Sep 2026 delivery spec; they remain Enterprise-shaped in this matrix. Generate / Evaluate / Git MCP / Payment / SSO / K8s stay empty until those phases.
 
 ---
 
@@ -180,6 +190,8 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 | MCP file access security | High | Path traversal protection; project-scoped directories |
 | Free tier abuse | Medium | Rate limiting; investigation cap enforcement |
 | Enterprise sales cycle long | Medium | Ship Team phase before full Enterprise; land Pro first |
+| Product only on a laptop | High | Push source to GitHub; do not commit weights or `electron/dist` |
+| Mac DMG from Windows | High | Build on macOS or GitHub Actions `desktop` workflow; unsigned DMG |
 
 ---
 

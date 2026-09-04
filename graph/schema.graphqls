@@ -1,0 +1,274 @@
+scalar Upload
+
+enum Tier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum InvestigationStatus {
+  PENDING
+  FAST_CLASSIFY
+  DEEP_ANALYZE
+  COUNCIL
+  COMPLETED
+  FAILED
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  DONE
+  SKIPPED
+}
+
+type TrustedDevice {
+  id: ID!
+  name: String!
+  createdAt: String!
+  lastSeenAt: String!
+}
+
+type User {
+  id: ID!
+  email: String!
+  tier: Tier!
+  mfaEnabled: Boolean!
+  orgId: ID
+  orgName: String
+  orgRole: String
+  trustedDevices: [TrustedDevice!]!
+}
+
+enum OrgRole {
+  ADMIN
+  ENGINEER
+  VIEWER
+}
+
+type OrgMember {
+  email: String!
+  role: String!
+  userId: ID
+}
+
+type AuthPayload {
+  token: String
+  user: User
+  mfaRequired: Boolean!
+  newDevice: Boolean!
+  ephemeralCode: String
+}
+
+type FileVersion {
+  fileName: String!
+  version: Int!
+  uploadedAt: String!
+}
+
+type ConsentRecord {
+  purpose: String!
+  accepted: Boolean!
+  createdAt: String!
+}
+
+type AuditLog {
+  id: ID!
+  action: String!
+  resource: String!
+  createdAt: String!
+}
+
+type FineTuneJob {
+  id: ID!
+  workspaceId: ID!
+  status: String!
+  adapterPath: String!
+  error: String
+  createdAt: String!
+}
+
+type Organization {
+  id: ID!
+  name: String!
+  members: [OrgMember!]!
+}
+
+type MfaEnrollPayload {
+  secret: String!
+  otpauthUrl: String!
+}
+
+type Workspace {
+  id: ID!
+  name: String!
+  projects: [Project!]!
+}
+
+type Project {
+  id: ID!
+  workspaceId: ID!
+  name: String!
+  isSample: Boolean!
+  files: [ProjectFile!]!
+  investigations: [Investigation!]!
+}
+
+type ProjectFile {
+  name: String!
+  path: String!
+  mimeType: String!
+  uploadedAt: String!
+  content: String
+}
+
+type PlanStep {
+  order: Int!
+  description: String!
+  status: StepStatus!
+}
+
+type Evidence {
+  file: String!
+  lines: String!
+  excerpt: String!
+}
+
+type FastResult {
+  summary: String!
+  incidentType: String!
+  confidence: Float!
+}
+
+type DeepResult {
+  rootCause: String!
+  confidence: Float!
+  evidence: [Evidence!]!
+  suggestedFix: String!
+}
+
+type CouncilModel {
+  role: String!
+  hypothesis: String!
+  confidence: Float!
+  evidence: [Evidence!]!
+}
+
+type Disagreement {
+  topic: String!
+  investigator: String!
+  challenger: String!
+}
+
+type FinalJudgment {
+  mostLikelyCause: String!
+  confidence: Float!
+  recommendedAction: String!
+}
+
+type CouncilResult {
+  models: [CouncilModel!]!
+  agreements: [String!]!
+  disagreements: [Disagreement!]!
+  finalJudgment: FinalJudgment!
+}
+
+type Investigation {
+  id: ID!
+  projectId: ID!
+  prompt: String!
+  status: InvestigationStatus!
+  plan: [PlanStep!]!
+  filesAccessed: [String!]!
+  fastResult: FastResult
+  deepResult: DeepResult
+  councilResult: CouncilResult
+  errorMessage: String
+  modelAName: String
+  modelBName: String
+  createdAt: String!
+}
+
+type ModelConfig {
+  workspaceId: ID!
+  modelAProvider: String!
+  modelAName: String!
+  modelBProvider: String!
+  modelBName: String!
+  temperature: Float!
+  maxTokens: Int!
+  investigatorPrompt: String!
+  challengerPrompt: String!
+  judgePrompt: String!
+  activeSlot: String!
+}
+
+input ModelConfigInput {
+  workspaceId: ID!
+  modelAProvider: String
+  modelAName: String
+  modelBProvider: String
+  modelBName: String
+  temperature: Float
+  maxTokens: Int
+  investigatorPrompt: String
+  challengerPrompt: String
+  judgePrompt: String
+  activeSlot: String
+}
+
+type LLMOpsMetrics {
+  totalInvestigations: Int!
+  completed: Int!
+  failed: Int!
+  avgConfidence: Float!
+  avgDurationSec: Float!
+  workerSlots: Int!
+  busySlots: Int!
+  modelAName: String!
+  modelBName: String!
+  ollamaReachable: Boolean!
+  ollamaModels: [String!]!
+  incidentModelReady: Boolean!
+  adapterOnDisk: Boolean!
+  topCauses: [String!]!
+}
+
+type Query {
+  me: User
+  workspaces: [Workspace!]!
+  project(id: ID!): Project
+  investigation(id: ID!): Investigation
+  investigations(projectId: ID!): [Investigation!]!
+  modelConfig(workspaceId: ID!): ModelConfig!
+  llmOpsMetrics(workspaceId: ID!): LLMOpsMetrics!
+  fileContent(projectId: ID!, name: String!): String!
+  fileVersions(projectId: ID!, fileName: String!): [FileVersion!]!
+  fileVersionContent(projectId: ID!, fileName: String!, version: Int!): String!
+  myOrganization: Organization
+  fineTuneJobs(workspaceId: ID!): [FineTuneJob!]!
+  myConsent: ConsentRecord
+  auditLogs: [AuditLog!]!
+}
+
+type Mutation {
+  register(email: String!, password: String!, deviceId: String, deviceName: String): AuthPayload!
+  login(email: String!, password: String!, mfaCode: String, deviceId: String, deviceName: String, deviceOtp: String): AuthPayload!
+  enrollMfa: MfaEnrollPayload!
+  enableMfa(code: String!): User!
+  disableMfa(code: String!): User!
+  revokeTrustedDevice(deviceId: ID!): User!
+  createWorkspace(name: String!): Workspace!
+  createProject(workspaceId: ID!, name: String!, isSample: Boolean): Project!
+  uploadFile(projectId: ID!, file: Upload!): ProjectFile!
+  updateModelConfig(input: ModelConfigInput!): ModelConfig!
+  startInvestigation(projectId: ID!, prompt: String): Investigation!
+  swapFileVersion(projectId: ID!, fileName: String!, version: Int!): ProjectFile!
+  deleteAccount: Boolean!
+  exportMyData: String!
+  recordConsent(purpose: String!, accepted: Boolean!): ConsentRecord!
+  startFineTuneJob(workspaceId: ID!): FineTuneJob!
+  attachIncidentModel(workspaceId: ID!): ModelConfig!
+  createOrganization(name: String!): Organization!
+  inviteOrgMember(email: String!, role: String!): Organization!
+}

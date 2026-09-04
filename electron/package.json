@@ -1,0 +1,32 @@
+{
+  "name": "azula-desktop",
+  "version": "0.1.0",
+  "description": "Azula desktop client",
+  "author": "Azula",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --win",
+    "pack:mac": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^35.2.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.azula.desktop",
+    "productName": "Azula",
+    "directories": { "output": "dist" },
+    "files": [
+      "main.js",
+      "preload.js",
+      "web/**/*"
+    ],
+    "win": { "target": "nsis" },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    }
+  }
+}

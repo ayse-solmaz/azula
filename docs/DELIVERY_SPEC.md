@@ -2,7 +2,7 @@
 
 **Deadline:** 6 Eylül 2026, Pazar 01:00  
 **Budget:** ~100 saat (~4 gün tam zamanlı)  
-**Status:** Mandatory requirements from project brief
+**Status:** Code for Tier A/B is in the repo. Checkboxes below match implementation, not the original empty sprint list.
 
 ---
 
@@ -41,29 +41,29 @@ Not everything can be production-grade. Jury demo uses **Tier A** live + **Tier 
 
 ### Tier A — Must work live (demo)
 
-- [ ] Go GraphQL API (auth, workspace, project, investigation)
-- [ ] MongoDB persistence
-- [ ] Web UI: onboarding + investigation + Council result
-- [ ] Electron shell loading same web app
-- [ ] Two LLM switch (Fast ↔ Deep) via dashboard
-- [ ] MCP file read from uploaded / sample pipeline
-- [ ] Agent planning UI (show plan steps, then execute)
-- [ ] 5-user concurrency test (load test script passes)
-- [ ] MFA (TOTP) — register + verify on login
-- [ ] Trusted device registration on login
-- [ ] User delete account (cascade delete in MongoDB)
-- [ ] Sample pipeline end-to-end investigation
-- [ ] LoRA/QLoRA fine-tune — **real training** on open-source model; see [FINETUNE.md](FINETUNE.md)
+- [x] Go GraphQL API (auth, workspace, project, investigation)
+- [x] MongoDB persistence
+- [x] Web UI: onboarding + investigation + Council result
+- [x] Electron shell loading same web app (Windows pack on this machine; Mac DMG on macOS/CI)
+- [x] Two LLM switch (Fast ↔ Deep) via dashboard
+- [x] MCP file read from uploaded / sample pipeline
+- [x] Agent planning UI (show plan steps, then execute)
+- [x] 5-user concurrency test script (`scripts/loadtest.go`) — run against a live API; not a substitute for a recorded demo
+- [x] MFA (TOTP) — register + verify on login
+- [x] Trusted device registration on login
+- [x] User delete account (cascade delete in MongoDB)
+- [x] Sample pipeline end-to-end investigation
+- [x] LoRA/QLoRA fine-tune — **real training** on open-source model; see [FINETUNE.md](FINETUNE.md)
 
 ### Tier B — Works with stub / minimal (show UI + one happy path)
 
-- [ ] Version swap — store 2 versions per file, swap in UI
-- [ ] Load-based routing — round-robin or queue depth metric (real, simple)
-- [ ] GDPR export — JSON dump of user data
-- [ ] Enterprise org creation — basic org + invite (email list, no full RBAC)
-- [ ] KVKK consent banner + processing log table
+- [x] Version swap — store 2 versions per file, swap in UI
+- [x] Load-based routing — round-robin or queue depth metric (real, simple)
+- [x] GDPR export — JSON dump of user data
+- [x] Enterprise org creation — basic org + invite (email list, no full RBAC)
+- [x] KVKK consent banner + processing log table
 
-### Tier C — Document + architecture slide only
+### Tier C — Document + architecture slide only (intentionally not built)
 
 - [ ] Full horizontal scale (K8s, multi-region)
 - [ ] Production LoRA training pipeline (GPU cluster)
@@ -252,13 +252,19 @@ Store `plan[]` on Investigation document; UI checks off each step.
 
 ```
 electron/
-  main.js       — BrowserWindow → load web app URL
-  preload.js    — secure bridge if needed
-  package.json  — electron-builder for win + mac
+  main.js       — BrowserWindow → bundled web/ or localhost:3000
+  preload.js    — device id + GraphQL URL
+  package.json  — electron-builder win (nsis) + mac (dmg, unsigned)
 ```
 
-Dev: `localhost:3000`  
-Prod: bundled static or remote URL
+| Platform | How to build | Where the artifact comes from |
+|----------|----------------|-------------------------------|
+| Windows | `powershell -File scripts/pack-electron.ps1` | `electron/dist` (gitignored). Unpacked exe is local-only. |
+| macOS | `bash scripts/pack-electron.sh` on a Mac | Unsigned `.dmg`. **Cannot be produced on Windows.** |
+| Mac without a Mac | GitHub Actions workflow `desktop` (`macos-latest`) | Download the Actions artifact. Still unsigned (no Apple Developer ID). |
+
+Dev: `localhost:3000` (API must be running).  
+Packaged: static files under `electron/web/` (copied from `web/dist`, gitignored). API is still local `localhost:8080`.
 
 ---
 
@@ -295,8 +301,8 @@ Prod: bundled static or remote URL
 ### Day 4 (16h) — Polish + Demo
 
 - Onboarding + sample pipeline
-- Electron build (win + mac)
-- Load test 5 users
+- Electron build (Windows pack script; Mac on macOS or CI)
+- Load test 5 users (`go run ./scripts/loadtest.go` with API + Mongo up)
 - MFA + trusted device demo script
 - Slide deck from docs
 - Backup demo video
@@ -327,7 +333,7 @@ Prod: bundled static or remote URL
 | Scale? | 5 concurrent workers; queue depth routing; tested with load script |
 | Fine-tune? | LoRA/QLoRA job pipeline; demo adapter on domain incident data |
 | Security? | MFA, trusted devices, audit logs, GDPR/KVKK delete + export |
-| Electron? | Same app on Windows/Mac for offline-capable desktop |
+| Electron? | Same web UI in a desktop shell. Windows installer from `pack-electron.ps1`. Mac DMG from a Mac or the `desktop` GitHub Action — not from a Windows machine. |
 
 ---
 

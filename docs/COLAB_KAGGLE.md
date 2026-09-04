@@ -101,24 +101,16 @@ Or: Kaggle → Save Version → Save output as dataset
 unzip azula-adapter.zip -d ./adapters/azula-incident
 ```
 
-### 2. Create Ollama model from merged weights
+### 2. Create Ollama model from fp16 merged weights
 
-If `merged/` folder exists in zip:
+4-bit `merged/` from training cannot be imported by Ollama. Use the **fp16** export (`azula-merged-fp16.zip`) at `adapters/azula-incident/merged-fp16/`. The repo already has `adapters/azula-incident/Modelfile` (official Qwen2.5 chat template). `import-azula-incident.ps1` patches `config.json` so Ollama sees `rope_theta` (Transformers 5 nested it; without that, Ollama emits `@` tokens).
 
-```bash
-cd adapters/azula-incident/merged
-```
-
-Create `Modelfile`:
-
-```
-FROM .
-PARAMETER temperature 0.3
-SYSTEM You are Azula, an ML incident investigator. Analyze pipeline failures with evidence and suggest fixes.
+```powershell
+# extract zip so model.safetensors is under adapters/azula-incident/merged-fp16/
+powershell -File scripts/import-azula-incident.ps1
 ```
 
 ```bash
-ollama create azula-incident -f Modelfile
 ollama run azula-incident "Analyze: CUDA OOM at epoch 3, batch_size 128"
 ```
 
@@ -149,6 +141,8 @@ Aim for **50–200 rows** for stronger demo. Use `samples/broken-pipeline/` as s
 
 | Problem | Fix |
 |---------|-----|
+| `unrecognized arguments: --torch_dtype` | Drop that flag. `train.py` already uses fp16. Or use `!python` (not `accelerate launch`). |
+| `_amp_foreach_non_finite_check_and_unscale_cuda` / `BFloat16` | Qwen is bf16; `fp16=True` GradScaler cannot unscale those grads. Re-run with the patched `train.py` (`fp16=False`). |
 | CUDA OOM in Colab | `--batch-size 2`, reduce `--lora-r` to 8 |
 | HF download slow | `HF_HUB_ENABLE_HF_TRANSFER=1` or use mirror |
 | Kaggle internet off | Enable internet in notebook settings |

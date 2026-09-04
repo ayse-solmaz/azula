@@ -1,0 +1,132 @@
+import { useEffect, useState } from "react";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { ConsentRecord, getToken, gql, setToken } from "./api";
+import LoginPage from "./pages/Login";
+import HomePage from "./pages/Home";
+import InvestigationPage from "./pages/Investigation";
+import DashboardPage from "./pages/Dashboard";
+import SecurityPage from "./pages/Security";
+
+function Guard({ children }: { children: React.ReactNode }) {
+  if (!getToken()) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  const [consent, setConsent] = useState<ConsentRecord | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    gql<{ myConsent: ConsentRecord | null }>(`query { myConsent { purpose accepted createdAt } }`)
+      .then((d) => setConsent(d.myConsent))
+      .catch(() => setConsent(null));
+  }, []);
+
+  async function accept() {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await gql<{ recordConsent: ConsentRecord }>(
+        `mutation { recordConsent(purpose: "processing", accepted: true) { purpose accepted createdAt } }`
+      );
+      setConsent(data.recordConsent);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not record consent");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const needsConsent = consent !== undefined && (!consent || !consent.accepted);
+
+  return (
+    <div className="app">
+      <header className="topbar">
+        <NavLink to="/" className="brand">
+          azula
+        </NavLink>
+        <nav>
+          <NavLink to="/" end>
+            investigate
+          </NavLink>
+          <NavLink to="/dashboard">llm</NavLink>
+          <NavLink to="/security">security</NavLink>
+        </nav>
+        <div className="top-meta">
+          <div className="agent-status">workspace</div>
+          <button
+            type="button"
+            onClick={() => {
+              setToken(null);
+              window.location.href = "/login";
+            }}
+          >
+            sign out
+          </button>
+        </div>
+      </header>
+      {needsConsent && (
+        <div className="consent-bar legal">
+          <p>
+            Azula processes workspace files and prompts to run investigations (KVKK / GDPR). Data stays in your
+            MongoDB instance; you can export or delete it on the security page.
+          </p>
+          {error && <p className="error">{error}</p>}
+          <button type="button" disabled={busy} onClick={() => void accept()}>
+            {busy ? "saving…" : "i accept processing"}
+          </button>
+        </div>
+      )}
+      <main>{children}</main>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/"
+        element={
+          <Guard>
+            <Shell>
+              <HomePage />
+            </Shell>
+          </Guard>
+        }
+      />
+      <Route
+        path="/investigation/:id"
+        element={
+          <Guard>
+            <Shell>
+              <InvestigationPage />
+            </Shell>
+          </Guard>
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          <Guard>
+            <Shell>
+              <DashboardPage />
+            </Shell>
+          </Guard>
+        }
+      />
+      <Route
+        path="/security"
+        element={
+          <Guard>
+            <Shell>
+              <SecurityPage />
+            </Shell>
+          </Guard>
+        }
+      />
+    </Routes>
+  );
+}

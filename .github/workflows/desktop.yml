@@ -1,0 +1,52 @@
+name: desktop
+
+# Windows NSIS from windows-latest; unsigned Mac DMG from macos-latest.
+# electron-builder cannot produce a Mac app on Windows.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - "electron/**"
+      - "web/**"
+      - "scripts/pack-electron.*"
+      - ".github/workflows/desktop.yml"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Bundle web + pack NSIS
+        shell: pwsh
+        run: ./scripts/pack-electron.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: azula-windows
+          path: electron/dist/*.exe
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Bundle web + pack DMG
+        run: |
+          chmod +x scripts/pack-electron.sh
+          ./scripts/pack-electron.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: azula-macos
+          path: |
+            electron/dist/*.dmg
+            electron/dist/*.zip

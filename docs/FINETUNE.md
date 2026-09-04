@@ -159,24 +159,11 @@ Or HTTP: Python trainer as sidecar on `:8091` with `POST /train`.
 ### Option A — Ollama (simplest for demo)
 
 ```bash
-# Create Modelfile from merged weights or Ollama import
+cd adapters/azula-incident
 ollama create azula-incident -f Modelfile
 ```
 
-`Modelfile`:
-
-```
-FROM ./adapters/{jobId}/merged
-PARAMETER temperature 0.3
-SYSTEM You are Azula incident investigator. Analyze ML pipeline failures with evidence.
-```
-
-Go `LLMProvider` for Model B:
-
-```go
-// POST http://localhost:11434/api/generate
-// model: "azula-incident"
-```
+See `adapters/azula-incident/README.md`. Go Model B uses `LLM_MODEL_B_NAME=azula-incident`.
 
 ### Option B — vLLM / llama.cpp with LoRA adapter
 
@@ -192,11 +179,11 @@ User can:
 
 | Control | Effect |
 |---------|--------|
-| Select base model | `Qwen2.5-1.5B` / `Llama-3.2-3B` |
-| Upload training JSONL | New fine-tune job |
-| Start QLoRA job | Triggers Python trainer |
-| Attach adapter to Model B | Investigations use fine-tuned model |
-| Switch Model A ↔ B | Fast (API) vs Deep (fine-tuned local) |
+| Select base model | Ollama tags listed in dashboard inputs |
+| Start QLoRA job | If `adapters/azula-incident/merged-fp16` exists → job `ready` and Model B attached; else runs `train.py` |
+| Attach adapter to Model B | `attachIncidentModel` sets Model B to `azula-incident` |
+| Ollama health | Dashboard shows reachable / adapter on disk / `azula-incident` loaded |
+| Switch Model A ↔ B | Fast (A) vs Deep (fine-tuned local B) |
 
 ---
 

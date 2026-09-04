@@ -30,6 +30,17 @@ Supporting specs:
 - [Monetization](docs/MONETIZATION.md)
 - [Analytics](docs/ANALYTICS.md)
 - [Fine-tune (Colab/Kaggle)](docs/COLAB_KAGGLE.md) — QLoRA training guide
+- [Fine-tune merge for Ollama](docs/FINETUNE.md)
+
+## Shipped vs deferred (2026-09-04)
+
+**In the repo:** Investigate + Council, MCP files, GraphQL/Go API, web UI, MFA/trusted devices, GDPR export/delete, org invite, LLM dashboard, QLoRA trainer, Windows Electron pack.
+
+**Not in git:** QLoRA weights (`adapters/azula-incident/merged-fp16`), packaged installers (`electron/dist`). Keep those local; the source and Modelfile are what belong on GitHub.
+
+**Intentionally not built:** Generate, Evaluate, Git MCP, payments, SSO, Kubernetes.
+
+**Mac desktop:** `scripts/pack-electron.sh` on macOS, or the GitHub Action `desktop`. Windows cannot emit a `.dmg`.
 
 ## Sample Pipeline
 
@@ -69,8 +80,45 @@ cp .env.example .env
 # MongoDB (Docker Desktop running)
 docker run -d --name azula-mongo -p 27017:27017 --restart unless-stopped mongo:7
 
-# Ollama — Fast/Deep local models until a fine-tuned adapter is attached
+# API (Day 1 skeleton: auth, createProject, uploadFile)
+go run ./cmd/api
+
+# 5 concurrent startInvestigation calls (API + Mongo must already be running).
+# Proves the 5-slot worker pool accepts 5 users; it does not record a UI demo.
+go run ./scripts/loadtest.go
+
+# Web (proxies /graphql → :8080)
+cd web
+npm install
+npm run dev
+
+# Electron (separate trusted device from the browser)
+cd electron
+npm install
+npm start
+
+# Windows installer (bundles the web UI; API still runs locally)
+powershell -File scripts/pack-electron.ps1
+
+# macOS unsigned DMG (must run on a Mac; same API localhost:8080 at runtime)
+bash scripts/pack-electron.sh
+
+
+# GraphQL playground: http://localhost:8080
+# Web UI: http://localhost:3000
+
+# Ollama — Model A (Fast) + Model B (QLoRA merge as azula-incident)
 ollama pull qwen2.5:1.5b
+# After extracting the fp16 merge into adapters/azula-incident/merged-fp16:
+powershell -File scripts/import-azula-incident.ps1
+```
+
+Weights in `adapters/azula-incident/merged-fp16/` are gitignored. The Ollama recipe is [`adapters/azula-incident/Modelfile`](adapters/azula-incident/Modelfile) (official Qwen2.5 chat template). Import patches `rope_theta` into `config.json` so Ollama does not emit `@` tokens. Default Model B name is `azula-incident` (see `.env.example`).
+
+Regenerate GraphQL after schema changes:
+
+```bash
+go run github.com/99designs/gqlgen generate
 ```
 
 Fine-tune (QLoRA, ~15–25 min on Colab T4): open [notebooks/azula_qlora_colab.ipynb](notebooks/azula_qlora_colab.ipynb) via [Open in Colab](https://colab.research.google.com/github/ayse-solmaz/azula/blob/master/notebooks/azula_qlora_colab.ipynb). See [docs/COLAB_KAGGLE.md](docs/COLAB_KAGGLE.md).
