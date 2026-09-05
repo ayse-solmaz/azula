@@ -303,8 +303,14 @@ export default function InvestigationPage() {
         {skipped ? (
           <div className="skip-note">
             <p>
-              <strong>{t("skipBanner", { pct: fastPct })}</strong>
-              {t("skipBannerBody")}
+              {inv.escalationReason ? (
+                inv.escalationReason
+              ) : (
+                <>
+                  <strong>{t("skipBanner", { pct: fastPct })}</strong>
+                  {t("skipBannerBody")}
+                </>
+              )}
             </p>
           </div>
         ) : inv.escalationReason ? (

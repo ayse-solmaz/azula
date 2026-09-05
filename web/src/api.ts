@@ -358,6 +358,10 @@ export function onLoginPage() {
   return window.location.pathname.startsWith("/login");
 }
 
+export function isDesktopShell() {
+  return Boolean(desktop());
+}
+
 export function goLogin() {
   if (isDesktopShell() || window.location.protocol === "file:") {
     window.location.hash = "#/login";

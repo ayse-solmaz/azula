@@ -61,13 +61,13 @@ const en = {
   homeHowTitle: "What to do on this page",
   homeHow1t: "Open the sample project",
   homeHow1b:
-    "Use sample-broken-pipeline (badge: Sample). That is the only project that always runs Deep analysis and Council even when Fast is very sure.",
+    "Use sample-broken-pipeline (badge: Sample). The jury walkthrough is this project: schema drift + GPU OOM + target leak in one folder.",
   homeHow2t: "Click Start investigation",
   homeHow2b:
     "You do not chat with the models. Azula reads the project files and runs Fast → Deep → Council by itself. Wait on the result page.",
   homeHow3t: "Your own incident (optional)",
   homeHow3b:
-    "Create a project, drop log / yaml / py / jsonl files, then Start investigation. If Fast confidence is 70% or higher, Deep and Council are skipped — that is expected.",
+    "Create a project, drop log / yaml / py / jsonl files, then Start investigation. Deep and Council still run (unless a Pro gate is on). Sample is the scripted demo.",
   addProject: "Add a project",
   addProjectLead:
     "Leave the sample as-is for the full demo. Create a named project only when you have your own failed-run files to upload.",
@@ -425,7 +425,7 @@ const en = {
   accNavActivity: "Activity",
   accNavPrefs: "Preferences",
   accNavSupport: "Help",
-  accNavManage: "Account",
+  accNavManage: "Export & delete",
   profileTitle: "Profile",
   profileLead: "Who you are on this Azula workspace. Email is your sign-in identity.",
   displayName: "Display name",
@@ -472,7 +472,7 @@ const en = {
   faq1q: "Where do investigations run?",
   faq1a: "Projects → Start investigation. Not from Account.",
   faq2q: "Why were Deep and Council skipped?",
-  faq2a: "Fast was ≥70% sure on a non-sample project. Use the sample pipeline for the full Council.",
+  faq2a: "Only when the Pro gate is on and the project is not the sample. With default demo billing, every investigation runs Fast → Deep → Council.",
   faq3q: "How do I report a security issue?",
   faq3a: "See the Trust page and SECURITY.md. Do not file public issues with exploit details.",
   sendFeedback: "Send feedback",
@@ -528,13 +528,13 @@ const tr: { [K in keyof typeof en]: string } = {
   homeHowTitle: "Bu sayfada ne yapmalısın",
   homeHow1t: "Örnek projeyi aç",
   homeHow1b:
-    "sample-broken-pipeline kullan (rozet: Örnek). Fast çok emin olsa bile Deep ve Council’un her zaman çalıştığı tek proje budur.",
+    "sample-broken-pipeline kullan (rozet: Örnek). Jüri yürüyüşü bu proje: şema kayması + GPU OOM + hedef sızıntısı tek klasörde.",
   homeHow2t: "Soruşturmayı başlat’a bas",
   homeHow2b:
     "Modellerle sohbet etmiyorsun. Azula dosyaları okur ve Fast → Deep → Council’u kendi çalıştırır. Sonuç sayfasında bekle.",
   homeHow3t: "Kendi olayın (isteğe bağlı)",
   homeHow3b:
-    "Proje oluştur, log / yaml / py / jsonl bırak, sonra soruşturmayı başlat. Fast güveni %70 ve üzeriyse Deep ve Council atlanır — bu beklenen davranış.",
+    "Proje oluştur, log / yaml / py / jsonl bırak, sonra soruşturmayı başlat. Deep ve Council yine çalışır (Pro kapısı açık değilse). Senaryolu demo örnek projedir.",
   addProject: "Proje ekle",
   addProjectLead:
     "Tam demo için örneği olduğu gibi bırak. Adlı proje yalnızca kendi kırık koşu dosyalarını yükleyeceksen.",
@@ -890,7 +890,7 @@ const tr: { [K in keyof typeof en]: string } = {
   accNavActivity: "Etkinlik",
   accNavPrefs: "Tercihler",
   accNavSupport: "Yardım",
-  accNavManage: "Hesap",
+  accNavManage: "Dışa aktar ve sil",
   profileTitle: "Profil",
   profileLead: "Bu Azula çalışma alanındaki kimliğin. E-posta giriş kimliğindir.",
   displayName: "Görünen ad",
@@ -937,7 +937,7 @@ const tr: { [K in keyof typeof en]: string } = {
   faq1q: "Soruşturmalar nerede çalışır?",
   faq1a: "Projeler → Soruşturmayı başlat. Hesap sayfasından değil.",
   faq2q: "Deep ve Council neden atlandı?",
-  faq2a: "Örnek olmayan projede Fast ≥%70 emindi. Tam Council için örnek pipeline’ı kullan.",
+  faq2a: "Yalnızca Pro kapısı açıksa ve proje örnek değilse. Varsayılan demo faturalamada her soruşturma Fast → Deep → Council çalışır.",
   faq3q: "Güvenlik açığını nasıl bildiririm?",
   faq3a: "Trust sayfası ve SECURITY.md. İstismar ayrıntılı herkese açık issue açma.",
   sendFeedback: "Geri bildirim gönder",
