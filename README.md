@@ -123,7 +123,11 @@ cd web
 npm install
 npm run dev
 
-# Electron (separate trusted device from the browser; loads WEB_URL :3001)
+# Desktop (one command on Windows: packs web if needed, starts API, opens Electron)
+# scripts\azula.cmd
+# or: powershell -File scripts/start-desktop.ps1
+#
+# Dev without packing: keep API + Vite running, then:
 cd electron
 npm install
 npm start

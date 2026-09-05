@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { CouncilResult, Evidence, gql, INV_FIELDS, Investigation } from "../api";
 import {
   ConfBar,
@@ -266,7 +266,19 @@ export default function InvestigationPage() {
     }
   }
 
-  if (error) return <p className="page error">{error}</p>;
+  if (error) {
+    return (
+      <div className="page">
+        <section className="panel">
+          <h2>{t("invLoadFail")}</h2>
+          <p className="error">{error}</p>
+          <Link className="primary" to="/">
+            {t("backHome")}
+          </Link>
+        </section>
+      </div>
+    );
+  }
   if (!inv) return <p className="page muted">{t("loadingInv")}</p>;
 
   const running = !["COMPLETED", "FAILED"].includes(inv.status);
@@ -373,6 +385,26 @@ export default function InvestigationPage() {
         {!!inv.filesAccessed?.length && <p className="hint">{t("mcpFiles", { list: inv.filesAccessed.join(", ") })}</p>}
       </aside>
       <section className="stack">
+        {inv.status === "COMPLETED" && (inv.councilResult?.finalJudgment || inv.deepResult) ? (
+          <article className="panel findings-hero">
+            <p className="eyebrow">{t("findingsEyebrow")}</p>
+            <h2>{t("findingsCause")}</h2>
+            <p className="verdict-cause">
+              {inv.councilResult?.finalJudgment.mostLikelyCause || inv.deepResult?.rootCause}
+            </p>
+            <Conf
+              value={inv.councilResult?.finalJudgment.confidence ?? inv.deepResult?.confidence ?? 0}
+            />
+            {(inv.councilResult?.finalJudgment.recommendedAction || inv.deepResult?.suggestedFix) && (
+              <>
+                <h3>{t("findingsFix")}</h3>
+                <p className="feed-lead">
+                  {inv.councilResult?.finalJudgment.recommendedAction || inv.deepResult?.suggestedFix}
+                </p>
+              </>
+            )}
+          </article>
+        ) : null}
         {debate && inv.councilResult ? (
           <CouncilBoard council={inv.councilResult} inv={inv} onOpenFile={openFile} fileName={fileName} />
         ) : null}

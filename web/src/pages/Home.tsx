@@ -414,11 +414,19 @@ export default function HomePage() {
           <section className="panel">
             <div className="feed-head">
               <h2>{ws.name}</h2>
+              <p className="feed-lead">{t("workspaceLead")}</p>
             </div>
             {ws.projects.length === 0 && (
               <EmptyState
                 title={t("noProjects")}
                 text={t("noProjectsText")}
+                action={
+                  editable ? (
+                    <button type="button" className="primary" disabled={busy} onClick={() => void seedSample(ws.id)}>
+                      {t("trySample")}
+                    </button>
+                  ) : undefined
+                }
               />
             )}
             {(() => {
