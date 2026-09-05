@@ -11,15 +11,68 @@ import {
   GitRepo,
   gql,
   Project,
+  Workspace,
 } from "../api";
-import { ConfBar, EmptyState, formatWhen, isProFeatureError, UpgradeBanner } from "../ui";
+import { ConfBar, EmptyState, formatWhen, HowTo, isProFeatureError, UpgradeBanner } from "../ui";
 import { useI18n } from "../i18n";
 
 const GIT_FIELDS = `url branch head connected`;
 
+function LoopHub() {
+  const { t } = useI18n();
+  const nav = useNavigate();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    gql<{ workspaces: Workspace[] }>(
+      `query { workspaces { id name projects { id name isSample } } }`
+    )
+      .then((d) => {
+        const list = (d.workspaces || []).flatMap((ws) => ws.projects || []);
+        setProjects(list);
+        const sample = list.find((p) => p.isSample) || list[0];
+        if (sample && list.length === 1) nav(`/loop/${sample.id}`, { replace: true });
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : t("failed")));
+  }, [nav, t]);
+
+  return (
+    <div className="page">
+      <section className="panel">
+        <h2>{t("loopHubTitle")}</h2>
+        <p className="feed-lead">{t("loopHubLead")}</p>
+        {error && <p className="error">{error}</p>}
+        {projects.length === 0 && !error ? (
+          <EmptyState
+            title={t("noProjects")}
+            text={t("loopHubEmpty")}
+            action={
+              <button type="button" className="primary" onClick={() => nav("/")}>
+                {t("backHome")}
+              </button>
+            }
+          />
+        ) : (
+          <ul className="history">
+            {projects.map((p) => (
+              <li key={p.id}>
+                <button type="button" className="linkish" onClick={() => nav(`/loop/${p.id}`)}>
+                  {p.name} {p.isSample ? `· ${t("sampleBadge")}` : ""}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export default function LoopPage() {
   const { t, locale } = useI18n();
   const { projectId } = useParams();
+  if (!projectId) return <LoopHub />;
   const nav = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [ent, setEnt] = useState<Entitlements | null>(null);
@@ -158,9 +211,17 @@ export default function LoopPage() {
 
   return (
     <div className="page">
+      <HowTo
+        title={t("loopHowTitle")}
+        steps={[
+          { n: "1", title: t("loopHow1t"), body: t("loopHow1b") },
+          { n: "2", title: t("loopHow2t"), body: t("loopHow2b") },
+          { n: "3", title: t("loopHow3t"), body: t("loopHow3b") },
+        ]}
+      />
       <section className="panel">
         <div className="feed-head">
-          <h2>{t("project")}</h2>
+          <h2>{t("loopHubTitle")}</h2>
           <p className="feed-lead">{project ? project.name : t("loading")}</p>
         </div>
         <button type="button" className="linkish" onClick={() => nav("/")}>

@@ -43,7 +43,9 @@ func (s *memUsers) GetByStripeCustomerID(_ context.Context, customerID string) (
 func (s *memUsers) Update(_ context.Context, u *domain.User) error { s.m[u.ID] = u; return nil }
 func (s *memUsers) Delete(_ context.Context, id string) error      { delete(s.m, id); return nil }
 
-type memOrgs struct{ m map[string]*domain.Organization }
+type memOrgs struct {
+	m map[string]*domain.Organization
+}
 
 func (s *memOrgs) Create(_ context.Context, o *domain.Organization) error { s.m[o.ID] = o; return nil }
 func (s *memOrgs) GetByID(_ context.Context, id string) (*domain.Organization, error) {
@@ -62,12 +64,14 @@ func (s *memOrgs) DeleteByOwner(context.Context, string) error            { retu
 
 type memSpaces struct{}
 
-func (memSpaces) Create(context.Context, *domain.Workspace) error                  { return nil }
-func (memSpaces) GetByID(context.Context, string) (*domain.Workspace, error)       { return nil, domain.ErrNotFound }
-func (memSpaces) ListByOwner(context.Context, string) ([]domain.Workspace, error)  { return nil, nil }
-func (memSpaces) ListByOrg(context.Context, string) ([]domain.Workspace, error)    { return nil, nil }
-func (memSpaces) Update(context.Context, *domain.Workspace) error                  { return nil }
-func (memSpaces) DeleteByOwner(context.Context, string) error                      { return nil }
+func (memSpaces) Create(context.Context, *domain.Workspace) error { return nil }
+func (memSpaces) GetByID(context.Context, string) (*domain.Workspace, error) {
+	return nil, domain.ErrNotFound
+}
+func (memSpaces) ListByOwner(context.Context, string) ([]domain.Workspace, error) { return nil, nil }
+func (memSpaces) ListByOrg(context.Context, string) ([]domain.Workspace, error)   { return nil, nil }
+func (memSpaces) Update(context.Context, *domain.Workspace) error                 { return nil }
+func (memSpaces) DeleteByOwner(context.Context, string) error                     { return nil }
 
 func TestUpdateAndRemoveMember(t *testing.T) {
 	now := time.Now().UTC()

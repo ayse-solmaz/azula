@@ -222,12 +222,12 @@ Store `plan[]` on Investigation document; UI checks off each step.
 
 ## 10. Fine-tune (LoRA / QLoRA)
 
-### Demo implementation (4 days)
+### Demo implementation (what is actually in the repo)
 
-1. UI: upload JSONL dataset, select base model, start job
-2. Backend: `FineTuneJobs` document `status: queued → training → ready`
-3. For demo: pre-baked adapter or simulate 30s training
-4. Attach `adapterId` to `ModelConfigs.modelB` for next investigation
+1. UI (Models → Developer): start a `FineTuneJobs` document (`queued → training → ready`)
+2. Real QLoRA trainer + Colab notebook — [FINETUNE.md](FINETUNE.md); weights stay gitignored
+3. `FINETUNE_DEMO_MODE=true` still exists as a short happy-path stub if no GPU
+4. Attach `azula-incident` to Model B via `attachIncidentModel` after import (`scripts/import-azula-incident.ps1`)
 
 ### Jury narrative
 
@@ -252,7 +252,7 @@ Store `plan[]` on Investigation document; UI checks off each step.
 
 ```
 electron/
-  main.js       — BrowserWindow → bundled web/ or localhost:3000
+  main.js       — BrowserWindow → bundled web/ or localhost:3001
   preload.js    — device id + GraphQL URL
   package.json  — electron-builder win (nsis) + mac (dmg, unsigned)
 ```
@@ -263,7 +263,7 @@ electron/
 | macOS | `bash scripts/pack-electron.sh` on a Mac | Unsigned `.dmg`. **Cannot be produced on Windows.** |
 | Mac without a Mac | GitHub Actions workflow `desktop` (`macos-latest`) | Download the Actions artifact. Still unsigned (no Apple Developer ID). |
 
-Dev: `localhost:3000` (API must be running).  
+Dev: `localhost:3001` (API must be running).  
 Packaged: static files under `electron/web/` (copied from `web/dist`, gitignored). API is still local `localhost:8080`.
 
 ---
@@ -312,15 +312,17 @@ Packaged: static files under `electron/web/` (copied from `web/dist`, gitignored
 
 ## 14. Jury Demo Script (3 minutes)
 
-1. **0:00** — "Your pipeline failed. Let's find out why." → sample project
-2. **0:20** — Agent plan appears (5 steps) → executes live
-3. **0:45** — Council: Model A vs Model B, agreement/disagreement
-4. **1:15** — LLM dashboard: switch model, change temperature, re-run
-5. **1:45** — Security: MFA login, trusted device prompt
-6. **2:15** — Version swap: compare config v1 vs v2
-7. **2:30** — Fine-tune: start LoRA job (demo completes)
-8. **2:45** — GDPR: export my data / delete account mention
-9. **3:00** — Architecture: Go + GraphQL + MongoDB + 5-user scale
+UI is `http://localhost:3001` (Vite). API is `:8080`. Do not open `:3000`.
+
+1. **0:00** — Register at `/login` (consent checkbox) → sample-broken-pipeline is auto-seeded
+2. **0:20** — Start investigation → plan steps check off as MCP reads files
+3. **0:45** — Council board: Investigator vs Challenger, aggregation badge, final judgment
+4. **1:15** — `/dashboard` → Models: switch Fast/Deep name or temperature → save → re-run
+5. **1:45** — `/security#security`: enroll MFA (QR) + trusted devices; "Simulate new device" shows the OTP on the login form in development
+6. **2:15** — Project tile → Compare: config.yaml versions / restore
+7. **2:30** — `/dashboard` Developer tab: start fine-tune job (stub or local trainer) + attach `azula-incident`
+8. **2:45** — `/security#privacy` or **Export & delete**: `exportMyData` JSON + mention `deleteAccount`
+9. **3:00** — Architecture: Go + GraphQL + MongoDB + 5-slot worker pool (`go run ./scripts/loadtest.go`)
 
 ---
 

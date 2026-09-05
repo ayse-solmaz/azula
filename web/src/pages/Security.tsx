@@ -542,6 +542,13 @@ export default function SecurityPage() {
               <h2>{t("privacyTitle")}</h2>
               <p className="feed-lead">{t("privacyLead")}</p>
               <p>{t("noPublicProfile")}</p>
+              <p className="feed-lead">{t("yourDataLead")}</p>
+              <div className="row-actions">
+                <button type="button" onClick={exportData}>
+                  {t("exportData")}
+                </button>
+                <a href="#manage">{t("accNavManage")}</a>
+              </div>
               <h3>{t("consentTitle")}</h3>
               <p className="feed-lead legal">
                 {consent?.accepted

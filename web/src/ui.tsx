@@ -10,6 +10,11 @@ export function isFreeTier(tier?: string | null) {
   return !tier || tier.toUpperCase() === "FREE";
 }
 
+/** Personal workspaces and org engineers/admins can mutate; viewers cannot. */
+export function canEdit(role?: string | null) {
+  return role !== "viewer";
+}
+
 export function isTierLimitError(message: string) {
   return /project limit|tier allows|FREE_TIER_MAX_PROJECTS|investigations used this month/i.test(message);
 }

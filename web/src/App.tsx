@@ -54,12 +54,15 @@ function Shell({ children }: { children: React.ReactNode }) {
           <NavLink to="/" end>
             {t("navProjects")}
           </NavLink>
-          <NavLink to="/dashboard">{t("navModels")}</NavLink>
+          <NavLink to="/dashboard">{t("navThink")}</NavLink>
+          <NavLink to="/loop">{t("navNext")}</NavLink>
           <NavLink to="/security">{t("navAccount")}</NavLink>
         </nav>
         <div className="top-meta">
+          <NavLink to="/trust" className="quiet-link">
+            {t("navTrust")}
+          </NavLink>
           <LanguageToggle />
-          <div className="agent-status">{t("navWorkspace")}</div>
           <button
             type="button"
             className="ghost"
@@ -96,7 +99,20 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/trust" element={<TrustPage />} />
+      <Route
+        path="/trust"
+        element={
+          hasSession() ? (
+            <Guard>
+              <Shell>
+                <TrustPage />
+              </Shell>
+            </Guard>
+          ) : (
+            <TrustPage />
+          )
+        }
+      />
       <Route
         path="/"
         element={
@@ -128,6 +144,16 @@ export default function App() {
         }
       />
       <Route
+        path="/loop"
+        element={
+          <Guard>
+            <Shell>
+              <LoopPage />
+            </Shell>
+          </Guard>
+        }
+      />
+      <Route
         path="/dashboard"
         element={
           <Guard>
@@ -147,6 +173,7 @@ export default function App() {
           </Guard>
         }
       />
+      <Route path="*" element={hasSession() ? <Navigate to="/" replace /> : <Navigate to="/login" replace />} />
     </Routes>
   );
 }

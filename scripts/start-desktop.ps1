@@ -1,3 +1,5 @@
+# One-command desktop: ensure electron/web exists, start the API if needed, open the shell.
+# Prefer scripts\azula.cmd from the repo root. Do not start Vite — this packs web/dist into electron/web.
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -56,11 +58,33 @@ if (-not (Test-Path $bundled)) {
   Show-Fail "Arayüz yok: electron\web\index.html"
 }
 
+function Wait-Api([int]$Seconds = 25) {
+  for ($i = 0; $i -lt $Seconds; $i++) {
+    try {
+      $r = Invoke-WebRequest -Uri "http://127.0.0.1:8080/health" -UseBasicParsing -TimeoutSec 2
+      if ($r.StatusCode -eq 200) { return $true }
+    } catch {
+      Start-Sleep -Seconds 1
+    }
+  }
+  return $false
+}
+
 if (-not (Test-Port 8080)) {
   $go = (Get-Command go -ErrorAction SilentlyContinue).Source
   if ($go) {
     Start-Process -FilePath $go -ArgumentList @("run", "./cmd/api") -WorkingDirectory $root -WindowStyle Minimized
   }
+}
+
+if (-not (Wait-Api)) {
+  Add-Type -AssemblyName System.Windows.Forms
+  [System.Windows.Forms.MessageBox]::Show(
+    "API henüz ayakta değil (http://127.0.0.1:8080/health). MongoDB açık mı? Masaüstü yine açılacak; giriş çalışmazsa go run ./cmd/api çalıştırın.`n`nThe API is not up yet. The desktop window will still open; sign-in needs go run ./cmd/api and MongoDB.",
+    "Azula",
+    "OK",
+    "Warning"
+  ) | Out-Null
 }
 
 Start-Process -FilePath $electronExe -ArgumentList $electronDir -WorkingDirectory $electronDir

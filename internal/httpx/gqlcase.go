@@ -31,6 +31,15 @@ var camelFields = func() [][2]string {
 		"updateModelConfig", "createOrganization", "inviteOrgMember", "recordConsent",
 		"fileContent", "fileVersions", "fileVersionContent", "swapFileVersion",
 		"enableMfa", "disableMfa",
+		"executionMode", "fallbackStages", "escalationReason", "displayName",
+		"notifyEmail", "notifyInvestigations", "notifyMarketing", "shareUsage",
+		"modelCName", "modelCProvider", "authFeatures", "ssoEnabled", "ssoLinked",
+		"aggregationNote", "needsReview", "generateDataset", "evaluateFix",
+		"connectGitRepo", "createCheckoutSession", "activateProDemo",
+		"updateProfile", "changePassword", "updateAccountPrefs", "deactivateAccount",
+		"gitRepo", "gitBlame", "gitDiff", "gitLog", "qualityNotes", "rowCount",
+		"schemaNote", "investigationId", "generationId", "billingEnabled",
+		"demoUpgrade", "teamWorkspace", "billingConfigured",
 	}
 	sort.Slice(names, func(i, j int) bool { return len(names[i]) > len(names[j]) })
 	out := make([][2]string, 0, len(names))

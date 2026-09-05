@@ -19,7 +19,9 @@ func (s *memGens) Create(_ context.Context, g *domain.Generation) error {
 	s.m[g.ID] = &cp
 	return nil
 }
-func (s *memGens) Update(_ context.Context, g *domain.Generation) error { return s.Create(context.Background(), g) }
+func (s *memGens) Update(_ context.Context, g *domain.Generation) error {
+	return s.Create(context.Background(), g)
+}
 func (s *memGens) GetByID(_ context.Context, id string) (*domain.Generation, error) {
 	g, ok := s.m[id]
 	if !ok {

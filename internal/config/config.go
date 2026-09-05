@@ -84,6 +84,8 @@ func Load() Config {
 	env := getenv("AZULA_ENV", "development")
 	playground := getenv("AZULA_GRAPHQL_PLAYGROUND", "")
 	showPlayground := playground == "true" || (playground == "" && env != "production")
+	otpEcho := getenv("DEVICE_OTP_ECHO", "")
+	deviceOTPEcho := otpEcho == "true" || (otpEcho == "" && env != "production")
 	return Config{
 		MongoURI:             getenv("MONGODB_URI", "mongodb://localhost:27017/azula"),
 		APIPort:              getenv("API_PORT", "8080"),
@@ -112,7 +114,7 @@ func Load() Config {
 		SMTPPass:             os.Getenv("SMTP_PASS"),
 		SMTPFrom:             getenv("SMTP_FROM", "azula@localhost"),
 		MailOutboxDir:        getenv("MAIL_OUTBOX_DIR", "./data/outbox"),
-		DeviceOTPEcho:        getenv("DEVICE_OTP_ECHO", "false") == "true",
+		DeviceOTPEcho:        deviceOTPEcho,
 		StripeSecretKey:      stripeKey,
 		StripeWebhookSecret:  os.Getenv("STRIPE_WEBHOOK_SECRET"),
 		StripePriceID:        getenv("STRIPE_PRICE_ID", ""),

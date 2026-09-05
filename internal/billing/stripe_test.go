@@ -52,7 +52,7 @@ func (s *hookUsers) GetByStripeCustomerID(_ context.Context, id string) (*domain
 	return &cp, nil
 }
 func (s *hookUsers) Update(_ context.Context, u *domain.User) error { s.u = u; return nil }
-func (s *hookUsers) Delete(context.Context, string) error          { return nil }
+func (s *hookUsers) Delete(context.Context, string) error           { return nil }
 
 func signed(t *testing.T, secret string, payload []byte) string {
 	t.Helper()

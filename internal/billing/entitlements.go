@@ -11,7 +11,7 @@ import (
 )
 
 type Service struct {
-	cfg  config.Config
+	cfg   config.Config
 	users domain.UserRepository
 	invs  domain.InvestigationRepository
 }

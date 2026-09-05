@@ -90,36 +90,40 @@ export default function DashboardPage() {
     return () => window.clearInterval(tick);
   }, [wsId]);
 
+  async function saveConfig(next: ModelConfig) {
+    setError("");
+    setSaved("");
+    const data = await gql<{ updateModelConfig: ModelConfig }>(
+      `mutation ($input: ModelConfigInput!) {
+        updateModelConfig(input: $input) { ${CFG_FIELDS} }
+      }`,
+      {
+        input: {
+          workspaceId: wsId,
+          modelAProvider: next.modelAProvider,
+          modelAName: next.modelAName,
+          modelBProvider: next.modelBProvider,
+          modelBName: next.modelBName,
+          modelCProvider: next.modelCProvider,
+          modelCName: next.modelCName,
+          temperature: next.temperature,
+          maxTokens: next.maxTokens,
+          investigatorPrompt: next.investigatorPrompt,
+          challengerPrompt: next.challengerPrompt,
+          judgePrompt: next.judgePrompt,
+          activeSlot: next.activeSlot,
+        },
+      }
+    );
+    setCfg(data.updateModelConfig);
+    setSaved(t("savedConfig"));
+  }
+
   async function onSave(e: FormEvent) {
     e.preventDefault();
     if (!cfg) return;
-    setError("");
-    setSaved("");
     try {
-      const data = await gql<{ updateModelConfig: ModelConfig }>(
-        `mutation ($input: ModelConfigInput!) {
-          updateModelConfig(input: $input) { ${CFG_FIELDS} }
-        }`,
-        {
-          input: {
-            workspaceId: wsId,
-            modelAProvider: cfg.modelAProvider,
-            modelAName: cfg.modelAName,
-            modelBProvider: cfg.modelBProvider,
-            modelBName: cfg.modelBName,
-            modelCProvider: cfg.modelCProvider,
-            modelCName: cfg.modelCName,
-            temperature: cfg.temperature,
-            maxTokens: cfg.maxTokens,
-            investigatorPrompt: cfg.investigatorPrompt,
-            challengerPrompt: cfg.challengerPrompt,
-            judgePrompt: cfg.judgePrompt,
-            activeSlot: cfg.activeSlot,
-          },
-        }
-      );
-      setCfg(data.updateModelConfig);
-      setSaved(t("savedConfig"));
+      await saveConfig(cfg);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
     }
@@ -145,11 +149,17 @@ export default function DashboardPage() {
     return (
       <div className="page">
         <section className="panel">
-          <h2>{t("navModels")}</h2>
+          <h2>{t("thinkTitle")}</h2>
+          <p className="feed-lead">{t("thinkLead")}</p>
           {error ? <p className="error">{error}</p> : (
             <EmptyState
               title={t("noWorkspace")}
               text={t("noWorkspaceText")}
+              action={
+                <Link className="primary" to="/">
+                  {t("goStartInv")}
+                </Link>
+              }
             />
           )}
         </section>
@@ -159,15 +169,41 @@ export default function DashboardPage() {
 
   const ollamaNames = metrics?.ollamaModels ?? [];
   const systemOk = Boolean(metrics?.ollamaReachable);
+  const fastName = metrics?.modelAName || cfg.modelAName;
+  const deepName = metrics?.modelBName || cfg.modelBName;
 
   return (
     <div className="page">
+      <section className="panel think-hero">
+        <p className="eyebrow">{t("navThink")}</p>
+        <h2>{t("thinkTitle")}</h2>
+        <p className="feed-lead">{t("thinkLead")}</p>
+        <div className="role-grid">
+          <article className="role-card">
+            <h3>{t("cardFast")}</h3>
+            <p>{t("cardFastBody")}</p>
+            <p className="think-used">{t("thinkFastUses", { name: fastName || "—" })}</p>
+          </article>
+          <article className="role-card">
+            <h3>{t("cardDeep")}</h3>
+            <p>{t("cardDeepBody")}</p>
+            <p className="think-used">{t("thinkDeepUses", { name: deepName || "—" })}</p>
+          </article>
+          <article className="role-card">
+            <h3>{t("cardCouncil")}</h3>
+            <p>{t("cardCouncilBody")}</p>
+          </article>
+        </div>
+      </section>
+
       {metrics && (
         <section className={`system-banner ${systemOk ? "ok" : "warn"}`}>
           <h2>{systemOk ? t("systemReady") : t("systemNotReady")}</h2>
           <p>{systemOk ? t("systemReadyLead") : t("systemNotReadyLead")}</p>
+          <p className="hint">{systemOk ? t("ollamaOk") : t("ollamaOff")}</p>
         </section>
       )}
+
       <Tabs
         tabs={[
           { id: "basic", label: t("basic") },
@@ -177,36 +213,41 @@ export default function DashboardPage() {
         active={pageTab}
         onChange={setPageTab}
       />
+
       {pageTab === "basic" && (
-        <>
-          <section className="panel">
-            <h2>{t("whichModel")}</h2>
-            <p className="feed-lead">{t("whichModelLead")}</p>
-            <div className="role-grid">
-              <article className="role-card">
-                <h3>{t("cardFast")}</h3>
-                <p>{t("cardFastBody")}</p>
-              </article>
-              <article className="role-card">
-                <h3>{t("cardDeep")}</h3>
-                <p>{t("cardDeepBody")}</p>
-              </article>
-              <article className="role-card">
-                <h3>{t("cardCouncil")}</h3>
-                <p>{t("cardCouncilBody")}</p>
-              </article>
-            </div>
-            <div className="project-actions" style={{ marginTop: 16 }}>
+        <section className="panel">
+          <h2>{t("thinkUsed")}</h2>
+          <p className="feed-lead">{t("tempHelp")}</p>
+          <form className="stack-form" onSubmit={onSave}>
+            <label>
+              {t("temperature")}
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="2"
+                value={cfg.temperature}
+                onChange={(e) => setCfg({ ...cfg, temperature: Number(e.target.value) })}
+              />
+            </label>
+            {error && <p className="error">{error}</p>}
+            {saved && <p className="ok">{saved}</p>}
+            <div className="project-actions">
+              <button className="primary" type="submit" disabled={viewer}>
+                {viewer ? t("saveViewer") : t("saveTemp")}
+              </button>
               <Link className="primary" to="/">
                 {t("goStartInv")}
               </Link>
             </div>
-          </section>
-        </>
+          </form>
+        </section>
       )}
+
       {pageTab === "advanced" && (
         <form className="panel form-grid" onSubmit={onSave}>
           <h2 className="wide">{t("optionalOllama")}</h2>
+          <p className="feed-lead wide">{t("advancedOnly")}</p>
           <label>
             {t("fastModel")}
             <select
@@ -250,17 +291,6 @@ export default function DashboardPage() {
             <input
               value={cfg.modelCName || "gpt-4o-mini"}
               onChange={(e) => setCfg({ ...cfg, modelCName: e.target.value })}
-            />
-          </label>
-          <label>
-            {t("temperature")}
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="2"
-              value={cfg.temperature}
-              onChange={(e) => setCfg({ ...cfg, temperature: Number(e.target.value) })}
             />
           </label>
           <label>
@@ -319,9 +349,11 @@ export default function DashboardPage() {
           </div>
         </form>
       )}
+
       {pageTab === "developer" && (
         <section className="panel">
           <h2>{t("finetuneTitle")}</h2>
+          <p className="feed-lead">{t("developerOnly")}</p>
           <p className="feed-lead">{t("finetuneLead")}</p>
           <div className="project-actions">
             <button
@@ -346,6 +378,8 @@ export default function DashboardPage() {
               {t("startFinetune")}
             </button>
           </div>
+          {error && <p className="error">{error}</p>}
+          {saved && <p className="ok">{saved}</p>}
           {jobs.length === 0 ? (
             <div style={{ marginTop: 16 }}>
               <EmptyState

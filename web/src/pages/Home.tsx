@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Entitlements, formatApiError, gql, INV_FIELDS, Investigation, Project, uploadProjectFile, User, Workspace } from "../api";
+import { Entitlements, gql, INV_FIELDS, Investigation, Project, uploadProjectFile, User, Workspace } from "../api";
 import { useI18n } from "../i18n";
-import { EmptyState, FileDropzone, FREE_TIER_MAX_PROJECTS, fileKind, formatWhen, isFreeTier, isProFeatureError, isTierLimitError, prettyStatus, statusTone, UpgradeBanner } from "../ui";
+import { canEdit, EmptyState, FileDropzone, FREE_TIER_MAX_PROJECTS, fileKind, formatWhen, HowTo, isFreeTier, isProFeatureError, isTierLimitError, prettyStatus, statusTone, UpgradeBanner } from "../ui";
 
 const WORKSPACES_QUERY = `query {
   me { id email orgRole tier }
@@ -359,6 +359,14 @@ export default function HomePage() {
 
   return (
     <div className="page">
+      <HowTo
+        title={t("homeHowTitle")}
+        steps={[
+          { n: "1", title: t("homeHow1t"), body: t("homeHow1b") },
+          { n: "2", title: t("homeHow2t"), body: t("homeHow2b") },
+          { n: "3", title: t("homeHow3t"), body: t("homeHow3b") },
+        ]}
+      />
       {workspaces.map((ws) => (
         <div key={ws.id}>
           {editable && (
@@ -406,11 +414,19 @@ export default function HomePage() {
           <section className="panel">
             <div className="feed-head">
               <h2>{ws.name}</h2>
+              <p className="feed-lead">{t("workspaceLead")}</p>
             </div>
             {ws.projects.length === 0 && (
               <EmptyState
                 title={t("noProjects")}
                 text={t("noProjectsText")}
+                action={
+                  editable ? (
+                    <button type="button" className="primary" disabled={busy} onClick={() => void seedSample(ws.id)}>
+                      {t("trySample")}
+                    </button>
+                  ) : undefined
+                }
               />
             )}
             {(() => {

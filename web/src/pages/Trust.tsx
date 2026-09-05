@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { hasSession } from "../api";
 import { LanguageToggle, useI18n } from "../i18n";
 
 export default function TrustPage() {
@@ -27,9 +28,15 @@ export default function TrustPage() {
           .
         </p>
         <div className="project-actions">
-          <Link className="primary" to="/login">
-            {t("signIn")}
-          </Link>
+          {hasSession() ? (
+            <Link className="primary" to="/">
+              {t("backHome")}
+            </Link>
+          ) : (
+            <Link className="primary" to="/login">
+              {t("signIn")}
+            </Link>
+          )}
         </div>
       </section>
       {principles.map((p) => (
