@@ -126,7 +126,7 @@ Do **not** spend >4h integrating full masterfabric monolith — time budget does
 ## Electron
 
 ```
-electron/main.js → load WEB_URL (dev: http://localhost:3000)
+electron/main.js → load WEB_URL (dev: http://localhost:3001)
 electron-builder → targets: win, mac
 ```
 

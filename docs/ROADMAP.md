@@ -1,10 +1,10 @@
 # Azula — Product Roadmap
 
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-05
 
-Product is **ahead of this file’s old empty checkboxes**. Phase 1 Investigate + Council is implemented in Go/GraphQL/web. Delivery-spec items (MFA, trusted devices, GDPR, Electron, QLoRA) were pulled forward for the jury date. They are marked below where they exist in code.
+Product is **ahead of this file’s original empty checkboxes**. Phase 1 Investigate + Council is implemented in Go/GraphQL/web. Delivery-spec items (MFA, trusted devices, GDPR, Electron, QLoRA) were pulled forward for the jury date. Later loop items (Generate, Evaluate, Git MCP, Stripe, OIDC) also landed on master (`857eeb5` and follow-ups). Checkboxes below match code, not the original week plan.
 
-**Shipped this pass:** Generate, Evaluate, Git MCP, Stripe/Pro gates, OIDC SSO, org RBAC, Kubernetes starter manifests, **LLM diversity + Council aggregation + prompt/context docs**.
+**Shipped on master:** Generate, Evaluate, Git MCP, Stripe/Pro gates (demo upgrade when keys unset), OIDC SSO, org RBAC, Kubernetes starter manifests, LLM diversity + Council aggregation + prompt/context docs, Trust/Loop pages, en/tr i18n.
 
 ---
 
@@ -54,15 +54,17 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 - Council structured JSON (`agreements`, `disagreements`, `finalJudgment`)
 - 5 concurrent users: `go run ./scripts/loadtest.go` against a running API (worker pool, not device-limit proof)
 
-### Not in MVP (unchanged)
+### Originally deferred from MVP — later status
 
-- Payment integration
-- Generate / Evaluate modes
-- Git MCP
-- Full team RBAC / SSO
-- Job queue / durable workers (Scale)
-- Refresh tokens
-- Executor / dedicated inference workers
+These were out of the original 6-week MVP. Do not treat this list as “still missing”:
+
+- Payment integration — **shipped** (Stripe Checkout + webhook; `activateProDemo` when keys unset)
+- Generate / Evaluate modes — **shipped** (`/loop/:projectId`)
+- Git MCP — **shipped** (HTTPS clone + SSRF deny; Pro-gated unless demo billing)
+- Team RBAC / SSO — **RBAC + OIDC shipped**; SAML is still later
+- Job queue / durable workers — **not built** (in-process 5-slot pool only)
+- Refresh tokens — **not built** (short-lived JWT + HttpOnly cookie)
+- Executor / dedicated inference workers — **not built**
 
 ---
 

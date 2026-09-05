@@ -50,15 +50,28 @@ Supporting specs:
 - [Fine-tune (Colab/Kaggle)](docs/COLAB_KAGGLE.md) — QLoRA training guide
 - [Prompting](docs/PROMPTING.md) — what the models are asked, token budget, how tests relate to live demo
 
-## Shipped vs deferred (2026-09-04)
+## Shipped vs deferred (2026-09-05)
 
-**In the repo:** Investigate + Council, MCP files, GraphQL/Go API, web UI, MFA/trusted devices, GDPR export/delete, org invite, LLM dashboard, QLoRA trainer, Windows Electron pack.
+**Live in the repo:** Investigate + Council (plan → execute), MCP files, GraphQL/Go API, Vite React web, MFA/trusted devices, GDPR consent + JSON export + account delete, org invite + admin/engineer/viewer RBAC, LLM dashboard (model switch / temperature / role prompts), Generate + Evaluate loop, Git MCP (HTTPS clone + SSRF deny), Stripe Checkout + demo Pro upgrade, OIDC SSO (when issuer/client set), i18n (en/tr), Trust + Loop pages, QLoRA trainer, Windows Electron pack, K8s starter manifests.
 
-**Not in git:** QLoRA weights (`adapters/azula-incident/merged-fp16`), packaged installers (`electron/dist`). Keep those local; the source and Modelfile are what belong on GitHub.
+**Not in git:** QLoRA weights (`adapters/azula-incident/merged-fp16`), packaged installers (`electron/dist`), `.env` secrets, `uploads/`. Keep those local; the source and Modelfile are what belong on GitHub.
 
-**Intentionally deferred / incomplete:** public F1 benchmark, Claude as Model C, 6–7B default Challenger, PDF export.
+**Stub / happy-path only (do not claim production):** org email invite (no real mailbox unless SMTP is set; device OTP is written to `data/outbox` and echoed in GraphQL outside production), Stripe when keys are unset (`activateProDemo`), fine-tune job queue (`FINETUNE_DEMO_MODE` or local trainer — not a GPU cluster), K8s manifests (single-cluster starter, not multi-region).
+
+**Intentionally not built:** SAML, PDF investigation export, public F1 leaderboard, Anthropic/Gemini Council lineup, Redis job queue, Mac DMG from Windows.
 
 **Mac desktop:** `scripts/pack-electron.sh` on macOS, or the GitHub Action `desktop`. Windows cannot emit a `.dmg`.
+
+## Jury walkthrough (3 minutes)
+
+1. `cp .env.example .env` — leave `AZULA_ENV=development` so new-device OTP is returned in GraphQL.
+2. Mongo + `go run ./cmd/api` + `cd web && npm run dev` → open **http://localhost:3001** (not :3000).
+3. Register → sample-broken-pipeline appears → **Start investigation**.
+4. Wait for Council (agreements / disagreements / final judgment). Fallback badge means Ollama was down — say so.
+5. **Models** (`/dashboard`): change temperature or Fast/Deep name → save → re-run.
+6. **Account → Security**: enroll MFA; **Export & delete** for GDPR JSON / wipe.
+
+Live Ollama (`qwen2.5:1.5b` + optional `azula-incident` / `mistral`) makes the run `live`. Without it the API still completes via canned fallback.
 
 ## Sample Pipeline
 
@@ -105,12 +118,12 @@ go run ./cmd/api
 # Proves the 5-slot worker pool accepts 5 users; it does not record a UI demo.
 go run ./scripts/loadtest.go
 
-# Web (proxies /graphql → :8080)
+# Web (Vite on :3001, proxies /graphql and /auth → :8080)
 cd web
 npm install
 npm run dev
 
-# Electron (separate trusted device from the browser)
+# Electron (separate trusted device from the browser; loads WEB_URL :3001)
 cd electron
 npm install
 npm start
@@ -123,7 +136,7 @@ bash scripts/pack-electron.sh
 
 
 # GraphQL playground: http://localhost:8080
-# Web UI: http://localhost:3000
+# Web UI: http://localhost:3001
 
 # Ollama — Fast (Qwen) + optional diverse Challenger (Mistral) + QLoRA Deep (azula-incident)
 ollama pull qwen2.5:1.5b
