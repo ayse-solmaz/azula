@@ -26,7 +26,7 @@ jobs:
       - name: Bundle web + pack NSIS
         shell: pwsh
         run: ./scripts/pack-electron.ps1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: azula-windows
           path: electron/dist/*.exe
@@ -44,7 +44,7 @@ jobs:
         run: |
           chmod +x scripts/pack-electron.sh
           ./scripts/pack-electron.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: azula-macos
           path: |
