@@ -13,10 +13,64 @@ import {
   Project,
   Workspace,
 } from "../api";
-import { ConfBar, EmptyState, formatWhen, HowTo, isProFeatureError, UpgradeBanner } from "../ui";
+import { ConfBar, EmptyState, formatWhen, HowTo, isProFeatureError, prettyStatus, statusTone, UpgradeBanner } from "../ui";
 import { useI18n } from "../i18n";
 
 const GIT_FIELDS = `url branch head connected`;
+
+function recLabel(rec: string, t: (k: "recAdopt" | "recReject" | "recReview") => string) {
+  const r = (rec || "").toLowerCase();
+  if (r.includes("reject") || r.includes("do not") || r.includes("wait")) return t("recReject");
+  if (r.includes("adopt") || r.includes("accept")) return t("recAdopt");
+  return t("recReview");
+}
+
+function isFallbackGen(g: Generation) {
+  return /fallback|unavailable|canned/i.test(g.qualityNotes || "");
+}
+
+function LoopProgress({
+  invDone,
+  genDone,
+  evalDone,
+}: {
+  invDone: boolean;
+  genDone: boolean;
+  evalDone: boolean;
+}) {
+  const { t } = useI18n();
+  const steps = [
+    {
+      title: t("stepInv"),
+      done: invDone,
+      current: !invDone,
+      hint: invDone ? t("stepInvDone") : t("stepInvTodo"),
+    },
+    {
+      title: t("stepGen"),
+      done: genDone,
+      current: invDone && !genDone,
+      hint: genDone ? t("stepGenDone") : t("stepGenTodo"),
+    },
+    {
+      title: t("stepEval"),
+      done: evalDone,
+      current: genDone && !evalDone,
+      hint: evalDone ? t("stepEvalDone") : t("stepEvalTodo"),
+    },
+  ];
+  return (
+    <div className="loop-steps">
+      {steps.map((s, i) => (
+        <div key={s.title} className={`loop-step${s.done ? " done" : ""}${s.current ? " current" : ""}`}>
+          <span className="step-n">{i + 1}</span>
+          <h3>{s.title}</h3>
+          <p>{s.hint}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function LoopHub() {
   const { t } = useI18n();
@@ -26,7 +80,15 @@ function LoopHub() {
 
   useEffect(() => {
     gql<{ workspaces: Workspace[] }>(
-      `query { workspaces { id name projects { id name isSample } } }`
+      `query {
+        workspaces {
+          id name
+          projects {
+            id name isSample
+            investigations { id status createdAt }
+          }
+        }
+      }`
     )
       .then((d) => {
         const list = (d.workspaces || []).flatMap((ws) => ws.projects || []);
@@ -54,15 +116,29 @@ function LoopHub() {
             }
           />
         ) : (
-          <ul className="history">
-            {projects.map((p) => (
-              <li key={p.id}>
-                <button type="button" className="linkish" onClick={() => nav(`/loop/${p.id}`)}>
-                  {p.name} {p.isSample ? `· ${t("sampleBadge")}` : ""}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="hub-list">
+            {projects.map((p) => {
+              const latest = p.investigations?.[0];
+              return (
+                <article key={p.id} className="project-card compact">
+                  <div className="project-header">
+                    <h3 className="project-title">{p.name}</h3>
+                    {p.isSample && <span className="badge accent">{t("sampleBadge")}</span>}
+                  </div>
+                  <p className="project-status">
+                    <span className={`badge ${statusTone(latest ? latest.status : "not started")}`}>
+                      {latest ? prettyStatus(latest.status, t) : t("notStarted")}
+                    </span>
+                  </p>
+                  <div className="project-actions">
+                    <button type="button" className="primary" onClick={() => nav(`/loop/${p.id}`)}>
+                      {t("afterRunGenerate")}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         )}
       </section>
     </div>
@@ -87,8 +163,12 @@ export default function LoopPage() {
   const [blamePath, setBlamePath] = useState("pipeline.py");
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const latestInv = project?.investigations?.[0];
+  const invDone = (latestInv?.status || "").toUpperCase() === "COMPLETED";
+  const genDone = gens.some((g) => (g.status || "").toLowerCase() === "completed" || g.rowCount > 0);
+  const evalDone = evals.length > 0;
 
   async function load() {
     if (!projectId) return;
@@ -105,7 +185,11 @@ export default function LoopPage() {
           deepAnalysis council generate evaluate gitMcp modelSelection
           teamWorkspace billingConfigured ssoEnabled demoUpgrade
         }
-        project(id: $id) { id workspaceId name isSample files { name mimeType uploadedAt } investigations { id } }
+        project(id: $id) {
+          id workspaceId name isSample
+          files { name mimeType uploadedAt }
+          investigations { id status createdAt }
+        }
         generations(projectId: $id) { ${GEN_FIELDS} }
         evaluations(projectId: $id) { ${EVAL_FIELDS} }
         gitRepo(projectId: $id) { ${GIT_FIELDS} }
@@ -128,14 +212,17 @@ export default function LoopPage() {
     if (!projectId) return;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
-      await gql(
+      const data = await gql<{ generateDataset: Generation }>(
         `mutation ($id: ID!, $prompt: String, $investigationId: ID) {
           generateDataset(projectId: $id, prompt: $prompt, investigationId: $investigationId) { ${GEN_FIELDS} }
         }`,
         { id: projectId, prompt: prompt || null, investigationId: latestInv?.id || null }
       );
       await load();
+      const g = data.generateDataset;
+      setNotice(t("genSuccess", { name: g.fileName, n: g.rowCount }));
     } catch (err) {
       setError(err instanceof Error ? err.message : t("genFailed"));
     } finally {
@@ -145,16 +232,22 @@ export default function LoopPage() {
 
   async function evaluate(generationId?: string) {
     if (!projectId) return;
+    if (!generationId && !gens[0]?.id) {
+      setError(t("needGenFirst"));
+      return;
+    }
     setBusy(true);
     setError("");
+    setNotice("");
     try {
-      await gql(
+      const data = await gql<{ evaluateFix: Evaluation }>(
         `mutation ($id: ID!, $generationId: ID, $investigationId: ID) {
           evaluateFix(projectId: $id, generationId: $generationId, investigationId: $investigationId) { ${EVAL_FIELDS} }
         }`,
-        { id: projectId, generationId: generationId || null, investigationId: latestInv?.id || null }
+        { id: projectId, generationId: generationId || gens[0]?.id || null, investigationId: latestInv?.id || null }
       );
       await load();
+      setNotice(t("evalSuccess", { rec: recLabel(data.evaluateFix.recommendation, t) }));
     } catch (err) {
       setError(err instanceof Error ? err.message : t("evalFailed"));
     } finally {
@@ -208,6 +301,7 @@ export default function LoopPage() {
 
   const lockedGenerate = ent && !ent.generate;
   const lockedGit = ent && !ent.gitMcp;
+  const canEvaluate = Boolean(ent?.evaluate) && genDone;
 
   return (
     <div className="page">
@@ -224,28 +318,46 @@ export default function LoopPage() {
           <h2>{t("loopHubTitle")}</h2>
           <p className="feed-lead">{project ? project.name : t("loading")}</p>
         </div>
-        <button type="button" className="linkish" onClick={() => nav("/")}>
-          {t("backProjects")}
-        </button>
+        <LoopProgress invDone={invDone} genDone={genDone} evalDone={evalDone} />
+        <div className="row-actions">
+          <button type="button" className="linkish" onClick={() => nav("/")}>
+            {t("backProjects")}
+          </button>
+          {latestInv && (
+            <button type="button" className="linkish" onClick={() => nav(`/investigation/${latestInv.id}`)}>
+              {invDone ? t("seeResults") : t("seeProgress")}
+            </button>
+          )}
+          {!latestInv && (
+            <button type="button" className="primary" onClick={() => nav("/")}>
+              {t("startInvestigation")}
+            </button>
+          )}
+        </div>
+        {notice && (
+          <div className="notice">
+            <p>{notice}</p>
+          </div>
+        )}
+        {evalDone && (
+          <div className="notice">
+            <p>
+              <strong>{t("loopDone")}</strong> {t("loopDoneLead")}
+            </p>
+          </div>
+        )}
         {error && !isProFeatureError(error) && <p className="error">{error}</p>}
         {isProFeatureError(error) && (
-          <UpgradeBanner
-            title={t("proFeature")}
-            text={error}
-            demo={!!ent?.demoUpgrade}
-          />
+          <UpgradeBanner title={t("proFeature")} text={error} demo={!!ent?.demoUpgrade} />
         )}
       </section>
 
       <section className="panel">
         <h2>{t("genTitle")}</h2>
         <p className="feed-lead">{t("genLead")}</p>
+        {!invDone && <p className="disabled-why">{t("needInvHint")}</p>}
         {lockedGenerate ? (
-          <UpgradeBanner
-            title={t("genLockedTitle")}
-            text={t("genLockedText")}
-            demo={!!ent?.demoUpgrade}
-          />
+          <UpgradeBanner title={t("genLockedTitle")} text={t("genLockedText")} demo={!!ent?.demoUpgrade} />
         ) : (
           <form className="stack-form" onSubmit={generate}>
             <label>
@@ -260,9 +372,7 @@ export default function LoopPage() {
               <button className="primary" disabled={busy} type="submit">
                 {busy ? t("working") : t("generateDataset")}
               </button>
-              {latestInv && (
-                <span className="muted">{t("usesLatest")}</span>
-              )}
+              {latestInv && <span className="muted">{t("usesLatest")}</span>}
             </div>
           </form>
         )}
@@ -272,14 +382,17 @@ export default function LoopPage() {
           <ul className="history">
             {gens.map((g) => (
               <li key={g.id}>
-                <strong>{g.fileName}</strong> · {g.rowCount} rows · {Math.round(g.confidence * 100)}% ·{" "}
-                {formatWhen(g.createdAt, locale)}
-                <p className="muted">{g.schemaNote}</p>
-                {ent?.evaluate && (
-                  <button type="button" className="linkish" disabled={busy} onClick={() => void evaluate(g.id)}>
-                    {t("evalThis")}
-                  </button>
-                )}
+                <div>
+                  <strong>{g.fileName}</strong> · {g.rowCount} · {Math.round(g.confidence * 100)}% ·{" "}
+                  {formatWhen(g.createdAt, locale)}
+                  {g.schemaNote && <p className="muted">{g.schemaNote}</p>}
+                  {isFallbackGen(g) && <p className="disabled-why">{t("fallbackGenNote")}</p>}
+                  {ent?.evaluate && (
+                    <button type="button" className="linkish" disabled={busy} onClick={() => void evaluate(g.id)}>
+                      {t("evalThis")}
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -290,20 +403,27 @@ export default function LoopPage() {
         <h2>{t("evalTitle")}</h2>
         <p className="feed-lead">{t("evalLead")}</p>
         {ent && !ent.evaluate ? (
-          <UpgradeBanner
-            title={t("evalLockedTitle")}
-            text={t("evalLockedText")}
-            demo={!!ent.demoUpgrade}
-          />
+          <UpgradeBanner title={t("evalLockedTitle")} text={t("evalLockedText")} demo={!!ent.demoUpgrade} />
         ) : (
-          <button type="button" disabled={busy} onClick={() => void evaluate(gens[0]?.id)}>
-            {t("evalLatest")}
-          </button>
+          <>
+            <button
+              type="button"
+              className={genDone && !evalDone ? "primary" : undefined}
+              disabled={busy || !canEvaluate}
+              onClick={() => void evaluate(gens[0]?.id)}
+            >
+              {t("evalLatest")}
+            </button>
+            {!genDone && <p className="disabled-why">{t("needGenFirst")}</p>}
+          </>
         )}
+        {evals.length === 0 && genDone && ent?.evaluate ? (
+          <EmptyState title={t("evalTitle")} text={t("evalLead")} />
+        ) : null}
         {evals.map((ev) => (
           <article key={ev.id} className="project-card" style={{ marginTop: 16 }}>
             <div className="project-header">
-              <h3 className="project-title">{ev.recommendation}</h3>
+              <h3 className="project-title">{recLabel(ev.recommendation, t)}</h3>
               <span className="badge ok">{Math.round(ev.confidence * 100)}%</span>
             </div>
             <p>{ev.summary}</p>
@@ -332,15 +452,12 @@ export default function LoopPage() {
         ))}
       </section>
 
-      <section className="panel">
+      <details className="panel archive-block">
+        <summary>{t("gitOptional")}</summary>
         <h2>{t("gitTitle")}</h2>
         <p className="feed-lead">{t("gitLead")}</p>
         {lockedGit ? (
-          <UpgradeBanner
-            title={t("gitLockedTitle")}
-            text={t("gitLockedText")}
-            demo={!!ent?.demoUpgrade}
-          />
+          <UpgradeBanner title={t("gitLockedTitle")} text={t("gitLockedText")} demo={!!ent?.demoUpgrade} />
         ) : (
           <>
             {git?.connected ? (
@@ -398,7 +515,7 @@ export default function LoopPage() {
             )}
           </>
         )}
-      </section>
+      </details>
     </div>
   );
 }
