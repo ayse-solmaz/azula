@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld("azulaDesktop", {
   getToken: () => ipcRenderer.sendSync("azula:session:get") || "",
   hasSession: () => Boolean(ipcRenderer.sendSync("azula:session:has")),
   setSession: (token) => ipcRenderer.sendSync("azula:session:set", token || ""),
+  retryLoad: () => ipcRenderer.sendSync("azula:retry"),
 });
