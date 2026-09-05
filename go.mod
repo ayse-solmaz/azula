@@ -7,7 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
-	github.com/pquerna/otp v1.4.0
+	github.com/pquerna/otp v1.5.0
 	github.com/vektah/gqlparser/v2 v2.5.30
 	go.mongodb.org/mongo-driver v1.17.7
 	golang.org/x/crypto v0.39.0
