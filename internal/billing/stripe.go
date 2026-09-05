@@ -114,10 +114,10 @@ func (s *Service) HandleWebhook(ctx context.Context, payload []byte, sigHeader s
 		return s.deactivateFromStripe(ctx, userID, sub.Customer)
 	case "customer.subscription.updated":
 		var sub struct {
-			Customer     string            `json:"customer"`
-			ID           string            `json:"id"`
-			Status       string            `json:"status"`
-			Metadata     map[string]string `json:"metadata"`
+			Customer string            `json:"customer"`
+			ID       string            `json:"id"`
+			Status   string            `json:"status"`
+			Metadata map[string]string `json:"metadata"`
 		}
 		if err := json.Unmarshal(evt.Data.Object, &sub); err != nil {
 			return err
