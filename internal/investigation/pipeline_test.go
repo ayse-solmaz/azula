@@ -316,8 +316,33 @@ func TestHighConfidenceStillRunsDeepAndCouncil(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
+		raw, _ := io.ReadAll(r.Body)
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.Unmarshal(raw, &req)
+		sys := ""
+		for _, m := range req.Messages {
+			if m.Role == "system" {
+				sys = m.Content
+			}
+		}
+		payload := `{"summary":"Clear CUDA OOM","incidentType":"memory_gpu","confidence":0.86}`
+		switch {
+		case strings.Contains(sys, "Deep"):
+			payload = `{"rootCause":"CUDA OOM from batch_size","confidence":0.9,"evidence":[{"file":"training.log","lines":"1-8","excerpt":"CUDA out of memory"}],"suggestedFix":"Reduce batch_size"}`
+		case strings.Contains(sys, "Investigator"):
+			payload = `{"role":"investigator","hypothesis":"GPU OOM from batch_size","confidence":0.9,"evidence":[{"file":"training.log","lines":"1-8","excerpt":"CUDA out of memory"}]}`
+		case strings.Contains(sys, "Challenger"):
+			payload = `{"role":"challenger","hypothesis":"Memory leak in the training loop","confidence":0.6,"evidence":[{"file":"config.yaml","lines":"1-4","excerpt":"batch_size"}]}`
+		case strings.Contains(sys, "Judge"):
+			payload = `{"agreements":["Both mention memory pressure"],"disagreements":[{"topic":"Root cause","investigator":"OOM","challenger":"leak"}],"finalJudgment":{"mostLikelyCause":"CUDA OOM from batch_size","confidence":0.88,"recommendedAction":"Reduce batch_size"}}`
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"message": map[string]string{"content": `{"summary":"Clear CUDA OOM","incidentType":"memory_gpu","confidence":0.86}`},
+			"message": map[string]string{"content": payload},
 		})
 	}))
 	defer srv.Close()
