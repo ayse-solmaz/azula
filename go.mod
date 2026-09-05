@@ -10,7 +10,7 @@ require (
 	github.com/pquerna/otp v1.4.0
 	github.com/vektah/gqlparser/v2 v2.5.30
 	go.mongodb.org/mongo-driver v1.17.7
-	golang.org/x/crypto v0.39.0
+	golang.org/x/crypto v0.55.0
 )
 
 require (
@@ -31,9 +31,9 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
-	golang.org/x/mod v0.37.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
-	golang.org/x/tools v0.47.0 // indirect
+	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/tools v0.48.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
