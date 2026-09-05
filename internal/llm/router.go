@@ -16,11 +16,11 @@ import (
 )
 
 type Router struct {
-	cfg     config.Config
-	client  *http.Client
-	mu      sync.Mutex
-	busy    int
-	slots   int
+	cfg    config.Config
+	client *http.Client
+	mu     sync.Mutex
+	busy   int
+	slots  int
 }
 
 func NewRouter(cfg config.Config) *Router {
@@ -60,19 +60,11 @@ func (r *Router) Release() {
 }
 
 func (r *Router) CompleteJSON(ctx context.Context, cfg domain.ModelConfig, slot, system, user string) (string, error) {
-	provider := cfg.ModelAProvider
-	model := cfg.ModelAName
-	if slot == "B" || strings.EqualFold(cfg.ActiveSlot, "B") && slot == "auto" {
-		provider = cfg.ModelBProvider
-		model = cfg.ModelBName
-	}
-	if slot == "B" {
-		provider = cfg.ModelBProvider
-		model = cfg.ModelBName
-		if names, err := ListOllamaModels(ctx, r.cfg.OllamaBaseURL); err == nil {
-			model = PickModelB(names, model)
-		}
-	}
+	return r.completeJSON(ctx, cfg, slot, "", system, user)
+}
+
+func (r *Router) completeJSON(ctx context.Context, cfg domain.ModelConfig, slot, modelOverride, system, user string) (string, error) {
+	provider, model := r.resolveSlot(ctx, cfg, slot, modelOverride)
 	temp := cfg.Temperature
 	if temp <= 0 {
 		temp = 0.2
@@ -83,6 +75,51 @@ func (r *Router) CompleteJSON(ctx context.Context, cfg domain.ModelConfig, slot,
 	default:
 		return r.ollama(ctx, model, system, user, temp)
 	}
+}
+
+func (r *Router) resolveSlot(ctx context.Context, cfg domain.ModelConfig, slot, modelOverride string) (provider, model string) {
+	slot = strings.ToUpper(strings.TrimSpace(slot))
+	switch slot {
+	case "B":
+		provider, model = cfg.ModelBProvider, cfg.ModelBName
+		if modelOverride != "" {
+			model = modelOverride
+			break
+		}
+		if names, err := ListOllamaModels(ctx, r.cfg.OllamaBaseURL); err == nil {
+			model = PickModelB(names, model)
+		}
+	case "C":
+		provider = cfg.ModelCProvider
+		model = cfg.ModelCName
+		if provider == "" {
+			provider = r.cfg.ModelCProvider
+		}
+		if model == "" {
+			model = r.cfg.ModelCName
+		}
+		if provider == "" {
+			provider = "openai"
+		}
+		if model == "" {
+			model = "gpt-4o-mini"
+		}
+		if modelOverride != "" {
+			model = modelOverride
+		}
+		if strings.EqualFold(provider, "openai") && r.cfg.OpenAIKey == "" {
+			return r.resolveSlot(ctx, cfg, "A", "")
+		}
+	default:
+		provider, model = cfg.ModelAProvider, cfg.ModelAName
+		if modelOverride != "" {
+			model = modelOverride
+		}
+	}
+	if provider == "" {
+		provider = "ollama"
+	}
+	return provider, model
 }
 
 func (r *Router) ollama(ctx context.Context, model, system, user string, temp float64) (string, error) {

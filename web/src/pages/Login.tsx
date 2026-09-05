@@ -1,9 +1,12 @@
-import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { gql, getDeviceId, getDeviceName, setToken, User } from "../api";
+import { FormEvent, useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { apiOrigin, gql, getDeviceId, getDeviceName, hasSession, setToken, User } from "../api";
+import { LanguageToggle, useI18n } from "../i18n";
 
 export default function LoginPage() {
+  const { t } = useI18n();
   const nav = useNavigate();
+  const [params] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
@@ -15,6 +18,25 @@ export default function LoginPage() {
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sso, setSso] = useState(false);
+
+  useEffect(() => {
+    const token = params.get("ssoToken");
+    if (token) {
+      setToken(token);
+      nav("/", { replace: true });
+      return;
+    }
+    if (params.get("sso") === "1" && hasSession()) {
+      nav("/", { replace: true });
+    }
+  }, [params, nav]);
+
+  useEffect(() => {
+    gql<{ authFeatures: { ssoEnabled: boolean } }>(`query { authFeatures { ssoEnabled } }`)
+      .then((d) => setSso(d.authFeatures.ssoEnabled))
+      .catch(() => setSso(false));
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -28,7 +50,7 @@ export default function LoginPage() {
           }`,
           { email, password, deviceId: getDeviceId(), deviceName: getDeviceName() }
         );
-        if (!data.register.token) throw new Error("Registration did not return a session");
+        if (!data.register.token) throw new Error(t("registerNoSession"));
         setToken(data.register.token);
         await gql(
           `mutation { recordConsent(purpose: "processing", accepted: true) { purpose accepted createdAt } }`
@@ -68,11 +90,11 @@ export default function LoginPage() {
         setEphemeral(data.login.ephemeralCode || "");
         return;
       }
-      if (!data.login.token) throw new Error("Login failed");
+      if (!data.login.token) throw new Error(t("loginFailed"));
       setToken(data.login.token);
       nav("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
+      setError(err instanceof Error ? err.message : t("failed"));
     } finally {
       setBusy(false);
     }
@@ -81,16 +103,19 @@ export default function LoginPage() {
   return (
     <div className="auth">
       <div className="panel auth-card">
-        <p className="eyebrow">azula</p>
-        <h1>your pipeline failed. let&apos;s find out why.</h1>
-        <p className="muted">Investigate logs, configs, and code — then debate the root cause across two models. Each browser or desktop app is a separate trusted device.</p>
+        <div className="row bar">
+          <p className="eyebrow">azula</p>
+          <LanguageToggle />
+        </div>
+        <h1>{t("loginHeadline")}</h1>
+        <p className="muted">{t("loginLead")}</p>
         <form onSubmit={onSubmit}>
           <label>
-            Email
+            {t("email")}
             <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required autoComplete="username" />
           </label>
           <label>
-            Password
+            {t("password")}
             <input
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -102,50 +127,67 @@ export default function LoginPage() {
           </label>
           {mfaRequired && (
             <label>
-              Authenticator code
+              {t("authenticatorCode")}
               <input
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value)}
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                placeholder="6-digit TOTP"
+                placeholder={t("totpPlaceholder")}
                 required
               />
             </label>
           )}
           {newDevice && (
             <label>
-              New device code
+              {t("newDeviceCode")}
               <input
                 value={deviceOtp}
                 onChange={(e) => setDeviceOtp(e.target.value)}
                 inputMode="numeric"
-                placeholder="6-digit code from email"
+                placeholder={t("emailCodePlaceholder")}
                 required
               />
             </label>
           )}
           {newDevice && (
             <p className="muted">
-              {ephemeral
-                ? `Demo echo (DEVICE_OTP_ECHO): ${ephemeral}`
-                : "This device is not on your trusted list yet. Check email or data/outbox for the 6-digit code. Other trusted devices stay signed in."}
+              {ephemeral ? t("deviceOtpDemo", { code: ephemeral }) : t("deviceOtpHint")}
             </p>
           )}
           {mode === "register" && (
             <label className="legal consent-check">
               <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} required />
-              I agree to processing of project files and prompts for incident investigation (KVKK / GDPR). I can export or delete my data later.
+              {t("registerConsent")}
             </label>
           )}
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={busy || (mode === "register" && !consent)}>
-            {busy ? "Working…" : mode === "login" ? "Sign in" : "Create account"}
+            {busy ? t("working") : mode === "login" ? t("signIn") : t("createAccount")}
           </button>
         </form>
+        {sso && mode === "login" && (
+          <button
+            type="button"
+            className="primary"
+            style={{ marginTop: 12 }}
+            onClick={() => {
+              const q = new URLSearchParams({
+                deviceId: getDeviceId(),
+                deviceName: getDeviceName(),
+              });
+              window.location.href = `${apiOrigin()}/auth/oidc/start?${q.toString()}`;
+            }}
+          >
+            {t("sso")}
+          </button>
+        )}
         <button className="linkish" type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}>
-          {mode === "login" ? "Need an account? Register" : "Already registered? Sign in"}
+          {mode === "login" ? t("needAccount") : t("haveAccount")}
         </button>
+        <p className="hint">
+          <Link to="/trust">{t("trustLink")}</Link>
+        </p>
       </div>
     </div>
   );

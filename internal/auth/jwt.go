@@ -2,7 +2,6 @@ package auth
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -43,13 +42,13 @@ func ParseToken(secret, tokenString string) (*Claims, error) {
 
 func Middleware(secret string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		header := r.Header.Get("Authorization")
-		if strings.HasPrefix(header, "Bearer ") {
-			raw := strings.TrimPrefix(header, "Bearer ")
+		ctx := WithWriter(r.Context(), w)
+		ctx = WithRequest(ctx, r)
+		if raw := TokenFromRequest(r); raw != "" {
 			if claims, err := ParseToken(secret, raw); err == nil {
-				r = r.WithContext(WithUserID(r.Context(), claims.UserID))
+				ctx = WithUserID(ctx, claims.UserID)
 			}
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

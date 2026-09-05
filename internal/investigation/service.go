@@ -13,8 +13,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const autoEscalateBelow = 0.7
-
 type Service struct {
 	projects domain.ProjectRepository
 	invs     domain.InvestigationRepository
@@ -22,25 +20,66 @@ type Service struct {
 	files    mcp.Connector
 	router   *llm.Router
 	cfg      config.Config
+	gate     Gate
+	audit    Auditor
+}
+
+type Gate interface {
+	CheckInvestigationCap(ctx context.Context, userID string) error
+	Require(ctx context.Context, userID, feature string) error
+}
+
+type Auditor interface {
+	Insert(ctx context.Context, log *domain.AuditLog) error
 }
 
 func New(projects domain.ProjectRepository, invs domain.InvestigationRepository, configs domain.ModelConfigRepository, files mcp.Connector, router *llm.Router, cfg config.Config) *Service {
 	return &Service{projects: projects, invs: invs, configs: configs, files: files, router: router, cfg: cfg}
 }
 
-func DefaultPlan() []domain.PlanStep {
-	descs := []string{
-		"Read training.log for errors",
-		"Read config.yaml for misconfiguration",
-		"Read pipeline.py for code bugs",
-		"Cross-check dataset.jsonl schema",
-		"Run Council with findings",
+func (s *Service) SetGate(g Gate) {
+	s.gate = g
+}
+
+func (s *Service) SetAudit(a Auditor) {
+	s.audit = a
+}
+
+func (s *Service) Halted() bool {
+	return s.cfg.KillSwitch
+}
+
+func (s *Service) logAudit(ctx context.Context, userID, action, resource string) {
+	if s.audit == nil {
+		return
 	}
+	_ = s.audit.Insert(ctx, &domain.AuditLog{
+		ID: uuid.NewString(), UserID: userID, Action: action, Resource: resource, CreatedAt: time.Now().UTC(),
+	})
+}
+
+func DefaultPlan() []domain.PlanStep {
+	return PlanFromFiles([]string{"training.log", "config.yaml", "pipeline.py", "dataset.jsonl"})
+}
+
+func PlanFromFiles(names []string) []domain.PlanStep {
+	descs := make([]string, 0, len(names)+1)
+	for _, n := range names {
+		descs = append(descs, "Read "+n+" (Investigator context)")
+	}
+	if len(descs) == 0 {
+		descs = append(descs, "List project files")
+	}
+	descs = append(descs, "Run Council with findings")
 	steps := make([]domain.PlanStep, len(descs))
 	for i, d := range descs {
 		steps[i] = domain.PlanStep{Order: i + 1, Description: d, Status: domain.StepPending}
 	}
 	return steps
+}
+
+func investigatorPrompt() string {
+	return llm.SysInvestigator
 }
 
 func (s *Service) Get(ctx context.Context, id string) (*domain.Investigation, error) {
@@ -56,9 +95,17 @@ func (s *Service) Stats(ctx context.Context, workspaceID string) (int, int, int,
 }
 
 func (s *Service) Start(ctx context.Context, userID, projectID, prompt string) (*domain.Investigation, error) {
+	if s.Halted() {
+		return nil, domain.ErrAgentHalted
+	}
 	project, err := s.projects.GetByID(ctx, projectID)
 	if err != nil {
 		return nil, err
+	}
+	if s.gate != nil {
+		if err := s.gate.CheckInvestigationCap(ctx, userID); err != nil {
+			return nil, err
+		}
 	}
 	if prompt == "" {
 		prompt = "Why did this training pipeline fail? Identify root cause with evidence."
@@ -84,8 +131,47 @@ func (s *Service) Start(ctx context.Context, userID, projectID, prompt string) (
 		s.router.Release()
 		return nil, err
 	}
+	s.logAudit(ctx, userID, "agent.start", "investigation:"+inv.ID)
 	go s.runAsync(inv.ID)
 	return inv, nil
+}
+
+func (s *Service) Cancel(ctx context.Context, userID, id string) (*domain.Investigation, error) {
+	inv, err := s.invs.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	switch inv.Status {
+	case domain.StatusCompleted, domain.StatusFailed:
+		return inv, nil
+	}
+	inv.Status = domain.StatusFailed
+	inv.ErrorMessage = domain.ErrCancelled.Error()
+	inv.UpdatedAt = time.Now().UTC()
+	if err := s.invs.Update(ctx, inv); err != nil {
+		return nil, err
+	}
+	s.logAudit(ctx, userID, "agent.cancel", "investigation:"+inv.ID)
+	return inv, nil
+}
+
+func (s *Service) halted(ctx context.Context, inv *domain.Investigation) error {
+	if s.Halted() {
+		inv.Status = domain.StatusFailed
+		inv.ErrorMessage = domain.ErrAgentHalted.Error()
+		inv.UpdatedAt = time.Now().UTC()
+		_ = s.invs.Update(ctx, inv)
+		return domain.ErrAgentHalted
+	}
+	cur, err := s.invs.GetByID(ctx, inv.ID)
+	if err != nil {
+		return err
+	}
+	if cur.Status == domain.StatusFailed {
+		*inv = *cur
+		return domain.ErrCancelled
+	}
+	return nil
 }
 
 func (s *Service) runAsync(id string) {
@@ -112,9 +198,9 @@ func (s *Service) EnsureConfig(ctx context.Context, workspaceID string) (*domain
 		c.CreatedAt = now
 		c.UpdatedAt = now
 		if c.InvestigatorPrompt == "" {
-			c.InvestigatorPrompt = "You are the Investigator. Build a root-cause hypothesis from the files. Return JSON only."
-			c.ChallengerPrompt = "You are the Challenger. Attack the Investigator and propose an alternative. Return JSON only."
-			c.JudgePrompt = "You are the Judge. Synthesize agreements, disagreements, and a final judgment. Return JSON only."
+			c.InvestigatorPrompt = llm.SysInvestigator
+			c.ChallengerPrompt = llm.SysChallenger
+			c.JudgePrompt = llm.SysJudge
 		}
 		if err := s.configs.Upsert(ctx, &c); err != nil {
 			return nil, err
@@ -189,6 +275,12 @@ func (s *Service) UpdateConfig(ctx context.Context, in domain.ModelConfig) (*dom
 	}
 	if in.ModelBName != "" {
 		cur.ModelBName = in.ModelBName
+	}
+	if in.ModelCProvider != "" {
+		cur.ModelCProvider = in.ModelCProvider
+	}
+	if in.ModelCName != "" {
+		cur.ModelCName = in.ModelCName
 	}
 	if in.Temperature > 0 {
 		cur.Temperature = in.Temperature
@@ -314,57 +406,35 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 		return err
 	}
 	names := make([]string, 0, len(listed))
-	contents := map[string]string{}
-	stepByFile := map[string]int{
-		"training.log":  0,
-		"config.yaml":   1,
-		"pipeline.py":   2,
-		"dataset.jsonl": 3,
-	}
 	for _, f := range listed {
 		names = append(names, f.Name)
-		if idx, ok := stepByFile[f.Name]; ok {
-			s.markStep(inv, idx, domain.StepRunning)
-		}
-		body, readErr := s.files.ReadFile(ctx, inv.ProjectID, f.Name)
-		if readErr != nil {
-			log.Printf("mcp: skip %s: %v", f.Name, readErr)
-			if idx, ok := stepByFile[f.Name]; ok {
-				s.markStep(inv, idx, domain.StepSkipped)
-			}
-			continue
-		}
-		contents[f.Name] = body
-		inv.FilesAccessed = append(inv.FilesAccessed, f.Name)
-		log.Printf("mcp: read %s (%d bytes) investigation=%s", f.Name, len(body), inv.ID)
-		if idx, ok := stepByFile[f.Name]; ok {
-			s.markStep(inv, idx, domain.StepDone)
-		}
-		_ = s.invs.Update(ctx, inv)
 	}
-	for name, idx := range stepByFile {
-		if _, ok := contents[name]; ok {
-			continue
-		}
-		if idx < len(inv.Plan) && inv.Plan[idx].Status == domain.StepPending {
-			s.markStep(inv, idx, domain.StepSkipped)
-		}
-	}
+	inv.Plan = PlanFromFiles(names)
+	inv.FilesAccessed = []string{}
+	inv.FallbackStages = []string{}
 
 	invCtx := domain.InvestigationContext{
 		InvestigationID: inv.ID,
 		ProjectID:       inv.ProjectID,
 		Prompt:          inv.Prompt,
 		FileNames:       names,
-		FileContents:    contents,
+		FileContents:    map[string]string{},
 	}
 	mcfg := s.modelConfig(ctx, inv.WorkspaceID)
+	if mcfg.InvestigatorPrompt == "" {
+		mcfg.InvestigatorPrompt = investigatorPrompt()
+	}
 	inv.ModelAName = mcfg.ModelAName
 	inv.ModelBName = mcfg.ModelBName
-	if names, err := llm.ListOllamaModels(ctx, s.cfg.OllamaBaseURL); err == nil {
-		inv.ModelBName = llm.PickModelB(names, mcfg.ModelBName)
+	inv.ModelCName = mcfg.ModelCName
+	if ollamaNames, listErr := llm.ListOllamaModels(ctx, s.cfg.OllamaBaseURL); listErr == nil {
+		inv.ModelBName = llm.PickModelB(ollamaNames, mcfg.ModelBName)
 	}
 	_ = s.invs.Update(ctx, inv)
+
+	if err := s.halted(ctx, inv); err != nil {
+		return err
+	}
 
 	select {
 	case <-ctx.Done():
@@ -377,28 +447,75 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 	}
 	_ = s.invs.Update(ctx, inv)
 
+	var fallback []string
 	fast, err := s.router.Classify(ctx, mcfg, invCtx)
 	if err != nil {
 		log.Printf("investigation %s: fast LLM fallback: %v", inv.ID, err)
 		fast = fallbackFast()
+		fallback = append(fallback, "fast")
 	}
 	inv.FastResult = fast
 	_ = s.invs.Update(ctx, inv)
-
-	if fast.Confidence < autoEscalateBelow {
-		log.Printf("investigation %s: auto-escalate (fast confidence %.2f < %.2f)", inv.ID, fast.Confidence, autoEscalateBelow)
+	if err := s.halted(ctx, inv); err != nil {
+		return err
 	}
+
+	forceCouncil := s.forceCouncilOnProject(ctx, inv.ProjectID)
+	if s.gate != nil && !forceCouncil {
+		if err := s.gate.Require(ctx, inv.UserID, "deep"); err != nil {
+			inv.EscalationReason = "Deep look and Council require Pro. Upgrade to continue with evidence-backed root cause."
+			inv.ExecutionMode = executionMode(fallback, 1)
+			inv.FallbackStages = fallback
+			s.skipRemainingPlan(inv)
+			if err := s.transition(inv, domain.StatusFastClassify, domain.StatusCompleted); err != nil {
+				return err
+			}
+			log.Printf("investigation %s: free-tier skip deep (%s)", inv.ID, inv.EscalationReason)
+			return s.invs.Update(ctx, inv)
+		}
+	}
+
+	inv.EscalationReason = fmt.Sprintf("Continuing to Deep look and Council (Quick look confidence %.0f%%).", fast.Confidence*100)
+	log.Printf("investigation %s: %s", inv.ID, inv.EscalationReason)
 	if err := s.transition(inv, domain.StatusFastClassify, domain.StatusDeepAnalyze); err != nil {
 		return err
 	}
 	_ = s.invs.Update(ctx, inv)
 
+	ranked := rankNames(names, inv.Prompt, fast.IncidentType)
+	contents, order, err := readRanked(ctx, s.files, inv.ProjectID, ranked, ContextChars)
+	if err != nil {
+		return err
+	}
+	stepByName := map[string]int{}
+	for i, n := range names {
+		stepByName[n] = i
+	}
+	for _, n := range names {
+		if _, ok := contents[n]; ok {
+			continue
+		}
+		s.markStep(inv, stepByName[n], domain.StepSkipped)
+	}
+	for _, n := range order {
+		s.markStep(inv, stepByName[n], domain.StepDone)
+		inv.FilesAccessed = append(inv.FilesAccessed, n)
+		log.Printf("mcp: read %s (%d bytes) investigation=%s", n, len(contents[n]), inv.ID)
+		s.logAudit(ctx, inv.UserID, "mcp.read", inv.ProjectID+":"+n)
+	}
+	invCtx.FileContents = contents
+	_ = s.invs.Update(ctx, inv)
+	if err := s.halted(ctx, inv); err != nil {
+		return err
+	}
+
 	deep, err := s.router.Analyze(ctx, mcfg, invCtx)
-	if err != nil || len(deep.Evidence) == 0 {
+	if err != nil || deep == nil || len(deep.Evidence) == 0 {
 		if err != nil {
 			log.Printf("investigation %s: deep LLM fallback: %v", inv.ID, err)
 		}
 		deep = fallbackDeep()
+		fallback = append(fallback, "deep")
 	}
 	inv.DeepResult = deep
 	_ = s.invs.Update(ctx, inv)
@@ -406,8 +523,11 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 	if err := s.transition(inv, domain.StatusDeepAnalyze, domain.StatusCouncil); err != nil {
 		return err
 	}
-	s.markStep(inv, 4, domain.StepRunning)
+	s.markStep(inv, len(inv.Plan)-1, domain.StepRunning)
 	_ = s.invs.Update(ctx, inv)
+	if err := s.halted(ctx, inv); err != nil {
+		return err
+	}
 
 	council, err := s.router.RunCouncil(ctx, mcfg, invCtx, fast, deep)
 	if err != nil || council == nil || len(council.Agreements) == 0 {
@@ -415,13 +535,48 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 			log.Printf("investigation %s: council LLM fallback: %v", inv.ID, err)
 		}
 		council = fallbackCouncil()
+		fallback = append(fallback, "council")
+	}
+	if council != nil && council.Aggregation == "" {
+		llm.ApplyAggregation(council, llm.ModelFamily(inv.ModelAName) == llm.ModelFamily(inv.ModelBName))
 	}
 	inv.CouncilResult = council
-	s.markStep(inv, 4, domain.StepDone)
+	s.markStep(inv, len(inv.Plan)-1, domain.StepDone)
+	inv.ExecutionMode = executionMode(fallback, 3)
+	inv.FallbackStages = fallback
 	if err := s.transition(inv, domain.StatusCouncil, domain.StatusCompleted); err != nil {
 		return err
 	}
 	return s.invs.Update(ctx, inv)
+}
+
+func (s *Service) forceCouncilOnProject(ctx context.Context, projectID string) bool {
+	if !s.cfg.ForceCouncilOnSample {
+		return false
+	}
+	p, err := s.projects.GetByID(ctx, projectID)
+	if err != nil || p == nil {
+		return false
+	}
+	return p.IsSample
+}
+
+func executionMode(fallback []string, stages int) string {
+	if len(fallback) == 0 {
+		return domain.ExecutionLive
+	}
+	if stages > 0 && len(fallback) >= stages {
+		return domain.ExecutionFallback
+	}
+	return domain.ExecutionMixed
+}
+
+func (s *Service) skipRemainingPlan(inv *domain.Investigation) {
+	for i := range inv.Plan {
+		if inv.Plan[i].Status == domain.StepPending || inv.Plan[i].Status == domain.StepRunning {
+			inv.Plan[i].Status = domain.StepSkipped
+		}
+	}
 }
 
 func (s *Service) modelConfig(ctx context.Context, workspaceID string) domain.ModelConfig {

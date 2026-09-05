@@ -15,6 +15,12 @@ enum InvestigationStatus {
   FAILED
 }
 
+enum ExecutionMode {
+  LIVE
+  FALLBACK
+  MIXED
+}
+
 enum StepStatus {
   PENDING
   RUNNING
@@ -32,12 +38,20 @@ type TrustedDevice {
 type User {
   id: ID!
   email: String!
+  displayName: String!
   tier: Tier!
   mfaEnabled: Boolean!
   orgId: ID
   orgName: String
   orgRole: String
   trustedDevices: [TrustedDevice!]!
+  ssoLinked: Boolean!
+  disabled: Boolean!
+  createdAt: String!
+  notifyEmail: Boolean!
+  notifyInvestigations: Boolean!
+  notifyMarketing: Boolean!
+  shareUsage: Boolean!
 }
 
 enum OrgRole {
@@ -112,6 +126,7 @@ type Project {
   isSample: Boolean!
   files: [ProjectFile!]!
   investigations: [Investigation!]!
+  gitRepo: GitRepo
 }
 
 type ProjectFile {
@@ -152,6 +167,7 @@ type CouncilModel {
   hypothesis: String!
   confidence: Float!
   evidence: [Evidence!]!
+  model: String
 }
 
 type Disagreement {
@@ -171,6 +187,9 @@ type CouncilResult {
   agreements: [String!]!
   disagreements: [Disagreement!]!
   finalJudgment: FinalJudgment!
+  aggregation: String!
+  needsReview: Boolean!
+  aggregationNote: String!
 }
 
 type Investigation {
@@ -186,6 +205,10 @@ type Investigation {
   errorMessage: String
   modelAName: String
   modelBName: String
+  modelCName: String
+  escalationReason: String
+  executionMode: ExecutionMode
+  fallbackStages: [String!]!
   createdAt: String!
 }
 
@@ -195,6 +218,8 @@ type ModelConfig {
   modelAName: String!
   modelBProvider: String!
   modelBName: String!
+  modelCProvider: String!
+  modelCName: String!
   temperature: Float!
   maxTokens: Int!
   investigatorPrompt: String!
@@ -209,6 +234,8 @@ input ModelConfigInput {
   modelAName: String
   modelBProvider: String
   modelBName: String
+  modelCProvider: String
+  modelCName: String
   temperature: Float
   maxTokens: Int
   investigatorPrompt: String
@@ -234,6 +261,90 @@ type LLMOpsMetrics {
   topCauses: [String!]!
 }
 
+type GitRepo {
+  url: String!
+  branch: String!
+  head: String!
+  connected: Boolean!
+}
+
+type GitBlameLine {
+  line: Int!
+  sha: String!
+  author: String!
+  summary: String!
+}
+
+type GitCommit {
+  sha: String!
+  author: String!
+  date: String!
+  message: String!
+}
+
+type MetricDelta {
+  name: String!
+  before: Float!
+  after: Float!
+  delta: Float!
+}
+
+type Generation {
+  id: ID!
+  projectId: ID!
+  investigationId: ID
+  prompt: String!
+  fileName: String!
+  rowCount: Int!
+  schemaNote: String!
+  qualityNotes: String!
+  confidence: Float!
+  status: String!
+  error: String
+  createdAt: String!
+}
+
+type Evaluation {
+  id: ID!
+  projectId: ID!
+  investigationId: ID
+  generationId: ID
+  summary: String!
+  recommendation: String!
+  confidence: Float!
+  metrics: [MetricDelta!]!
+  status: String!
+  error: String
+  createdAt: String!
+}
+
+type Entitlements {
+  tier: Tier!
+  maxProjects: Int!
+  maxInvestigationsPerMonth: Int!
+  investigationsUsed: Int!
+  deepAnalysis: Boolean!
+  council: Boolean!
+  generate: Boolean!
+  evaluate: Boolean!
+  gitMcp: Boolean!
+  modelSelection: Boolean!
+  teamWorkspace: Boolean!
+  billingConfigured: Boolean!
+  ssoEnabled: Boolean!
+  demoUpgrade: Boolean!
+}
+
+type AuthFeatures {
+  ssoEnabled: Boolean!
+  billingEnabled: Boolean!
+  demoUpgrade: Boolean!
+}
+
+type CheckoutPayload {
+  url: String!
+}
+
 type Query {
   me: User
   workspaces: [Workspace!]!
@@ -249,11 +360,20 @@ type Query {
   fineTuneJobs(workspaceId: ID!): [FineTuneJob!]!
   myConsent: ConsentRecord
   auditLogs: [AuditLog!]!
+  authFeatures: AuthFeatures!
+  entitlements: Entitlements!
+  generations(projectId: ID!): [Generation!]!
+  evaluations(projectId: ID!): [Evaluation!]!
+  gitRepo(projectId: ID!): GitRepo!
+  gitBlame(projectId: ID!, path: String!): [GitBlameLine!]!
+  gitDiff(projectId: ID!, refA: String, refB: String): String!
+  gitLog(projectId: ID!, limit: Int): [GitCommit!]!
 }
 
 type Mutation {
-  register(email: String!, password: String!, deviceId: String, deviceName: String): AuthPayload!
+	register(email: String!, password: String!, deviceId: String, deviceName: String): AuthPayload!
   login(email: String!, password: String!, mfaCode: String, deviceId: String, deviceName: String, deviceOtp: String): AuthPayload!
+  logout: Boolean!
   enrollMfa: MfaEnrollPayload!
   enableMfa(code: String!): User!
   disableMfa(code: String!): User!
@@ -262,7 +382,8 @@ type Mutation {
   createProject(workspaceId: ID!, name: String!, isSample: Boolean): Project!
   uploadFile(projectId: ID!, file: Upload!): ProjectFile!
   updateModelConfig(input: ModelConfigInput!): ModelConfig!
-  startInvestigation(projectId: ID!, prompt: String): Investigation!
+	startInvestigation(projectId: ID!, prompt: String): Investigation!
+  cancelInvestigation(id: ID!): Investigation!
   swapFileVersion(projectId: ID!, fileName: String!, version: Int!): ProjectFile!
   deleteAccount: Boolean!
   exportMyData: String!
@@ -271,4 +392,15 @@ type Mutation {
   attachIncidentModel(workspaceId: ID!): ModelConfig!
   createOrganization(name: String!): Organization!
   inviteOrgMember(email: String!, role: String!): Organization!
+  updateOrgMemberRole(email: String!, role: String!): Organization!
+  removeOrgMember(email: String!): Organization!
+  generateDataset(projectId: ID!, investigationId: ID, prompt: String): Generation!
+  evaluateFix(projectId: ID!, investigationId: ID, generationId: ID, prompt: String): Evaluation!
+  connectGitRepo(projectId: ID!, url: String!, branch: String): GitRepo!
+  createCheckoutSession: CheckoutPayload!
+  activateProDemo: User!
+  updateProfile(displayName: String!): User!
+  changePassword(currentPassword: String!, newPassword: String!): Boolean!
+  updateAccountPrefs(notifyEmail: Boolean, notifyInvestigations: Boolean, notifyMarketing: Boolean, shareUsage: Boolean): User!
+  deactivateAccount: Boolean!
 }

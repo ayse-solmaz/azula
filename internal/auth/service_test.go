@@ -55,6 +55,17 @@ func (s *memUsers) GetByEmail(_ context.Context, email string) (*domain.User, er
 	}
 	return nil, domain.ErrNotFound
 }
+func (s *memUsers) GetByStripeCustomerID(_ context.Context, customerID string) (*domain.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, u := range s.m {
+		if u.StripeCustomerID != "" && u.StripeCustomerID == customerID {
+			cp := *u
+			return &cp, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
 func (s *memUsers) Update(_ context.Context, u *domain.User) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -208,6 +219,42 @@ func TestMFAThenNewDeviceOTP(t *testing.T) {
 	user, _ := svc.users.GetByEmail(context.Background(), "mfa@x.dev")
 	if len(user.TrustedDevices) != 2 {
 		t.Fatalf("want laptop+phone, got %d", len(user.TrustedDevices))
+	}
+}
+
+func TestChangePasswordAndDisable(t *testing.T) {
+	users := &memUsers{m: map[string]*domain.User{}}
+	svc := NewWithAudit(users, memSpaces{}, config.Config{JWTSecret: "test", JWTExpiry: time.Hour}, nil, &mail.Memory{})
+	u, _, err := svc.Register(context.Background(), "c@x.dev", "password1", "dev-a", "laptop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithUserID(context.Background(), u.ID)
+	if _, err := svc.UpdateProfile(ctx, "Ada"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.RequireUser(ctx)
+	if err != nil || got.DisplayName != "Ada" {
+		t.Fatalf("profile %v %v", got, err)
+	}
+	if err := svc.ChangePassword(ctx, "password1", "password2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Login(context.Background(), "c@x.dev", "password1", "", "dev-a", "laptop", ""); err != domain.ErrInvalidCredentials {
+		t.Fatalf("old password still worked: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), "c@x.dev", "password2", "", "dev-a", "laptop", ""); err != nil {
+		t.Fatal(err)
+	}
+	email, investigations, marketing, share := false, true, false, true
+	if _, err := svc.UpdatePrefs(ctx, &email, &investigations, &marketing, &share); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeactivateAccount(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Login(context.Background(), "c@x.dev", "password2", "", "dev-a", "laptop", ""); err != domain.ErrAccountDisabled {
+		t.Fatalf("got %v", err)
 	}
 }
 

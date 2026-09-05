@@ -36,6 +36,13 @@ func (r *Resolver) requireEngineer(ctx context.Context, userID, workspaceID stri
 	return r.requireWorkspace(ctx, userID, workspaceID)
 }
 
+func (r *Resolver) requireAdmin(ctx context.Context, userID, workspaceID string) error {
+	if r.Org != nil {
+		return r.Org.Authorize(ctx, userID, workspaceID, "admin")
+	}
+	return r.requireWorkspace(ctx, userID, workspaceID)
+}
+
 func gqlUser(u *domain.User) *model.User {
 	devs := make([]*model.TrustedDevice, 0, len(u.TrustedDevices))
 	for _, d := range u.TrustedDevices {
@@ -51,12 +58,28 @@ func gqlUser(u *domain.User) *model.User {
 			ID: d.DeviceID, Name: name, CreatedAt: d.CreatedAt.UTC().Format(time.RFC3339), LastSeenAt: last.UTC().Format(time.RFC3339),
 		})
 	}
+	notifyEmail, notifyInv := u.NotifyEmail, u.NotifyInvestigations
+	if u.PrefsVersion == 0 {
+		notifyEmail, notifyInv = true, true
+	}
+	created := u.CreatedAt.UTC().Format(time.RFC3339)
+	if u.CreatedAt.IsZero() {
+		created = ""
+	}
 	out := &model.User{
-		ID:             u.ID,
-		Email:          u.Email,
-		Tier:           gqlTier(u.Tier),
-		MfaEnabled:     u.MFAEnabled,
-		TrustedDevices: devs,
+		ID:                   u.ID,
+		Email:                u.Email,
+		DisplayName:          u.DisplayName,
+		Tier:                 gqlTier(u.Tier),
+		MfaEnabled:           u.MFAEnabled,
+		TrustedDevices:       devs,
+		SsoLinked:            u.SSOSubject != "",
+		Disabled:             u.Disabled,
+		CreatedAt:            created,
+		NotifyEmail:          notifyEmail,
+		NotifyInvestigations: notifyInv,
+		NotifyMarketing:      u.NotifyMarketing,
+		ShareUsage:           u.ShareUsage,
 	}
 	if u.OrgID != "" {
 		out.OrgID = &u.OrgID
@@ -134,19 +157,26 @@ func gqlInvestigation(inv *domain.Investigation) *model.Investigation {
 		return nil
 	}
 	out := &model.Investigation{
-		ID:            inv.ID,
-		ProjectID:     inv.ProjectID,
-		Prompt:        inv.Prompt,
-		Status:        gqlInvStatus(inv.Status),
-		Plan:          gqlPlan(inv.Plan),
-		FilesAccessed: inv.FilesAccessed,
-		ErrorMessage:  strPtr(inv.ErrorMessage),
-		ModelAName:    strPtr(inv.ModelAName),
-		ModelBName:    strPtr(inv.ModelBName),
-		CreatedAt:     inv.CreatedAt.UTC().Format(time.RFC3339),
+		ID:               inv.ID,
+		ProjectID:        inv.ProjectID,
+		Prompt:           inv.Prompt,
+		Status:           gqlInvStatus(inv.Status),
+		Plan:             gqlPlan(inv.Plan),
+		FilesAccessed:    inv.FilesAccessed,
+		ErrorMessage:     strPtr(inv.ErrorMessage),
+		ModelAName:       strPtr(inv.ModelAName),
+		ModelBName:       strPtr(inv.ModelBName),
+		ModelCName:       strPtr(inv.ModelCName),
+		EscalationReason: strPtr(inv.EscalationReason),
+		ExecutionMode:    gqlExecutionMode(inv.ExecutionMode),
+		FallbackStages:   inv.FallbackStages,
+		CreatedAt:        inv.CreatedAt.UTC().Format(time.RFC3339),
 	}
 	if inv.FilesAccessed == nil {
 		out.FilesAccessed = []string{}
+	}
+	if out.FallbackStages == nil {
+		out.FallbackStages = []string{}
 	}
 	if inv.FastResult != nil {
 		out.FastResult = &model.FastResult{
@@ -169,14 +199,19 @@ func gqlInvestigation(inv *domain.Investigation) *model.Investigation {
 			for _, e := range m.Evidence {
 				ev = append(ev, &model.Evidence{File: e.File, Lines: e.Lines, Excerpt: e.Excerpt})
 			}
-			models = append(models, &model.CouncilModel{Role: m.Role, Hypothesis: m.Hypothesis, Confidence: m.Confidence, Evidence: ev})
+			models = append(models, &model.CouncilModel{Role: m.Role, Hypothesis: m.Hypothesis, Confidence: m.Confidence, Evidence: ev, Model: strPtr(m.Model)})
 		}
 		dis := make([]*model.Disagreement, 0, len(inv.CouncilResult.Disagreements))
 		for _, d := range inv.CouncilResult.Disagreements {
 			dis = append(dis, &model.Disagreement{Topic: d.Topic, Investigator: d.Investigator, Challenger: d.Challenger})
 		}
+		agg := inv.CouncilResult.Aggregation
+		if agg == "" {
+			agg = "unknown"
+		}
 		out.CouncilResult = &model.CouncilResult{
 			Models: models, Agreements: inv.CouncilResult.Agreements, Disagreements: dis,
+			Aggregation: agg, NeedsReview: inv.CouncilResult.NeedsReview, AggregationNote: inv.CouncilResult.AggregationNote,
 			FinalJudgment: &model.FinalJudgment{
 				MostLikelyCause:   inv.CouncilResult.FinalJudgment.MostLikelyCause,
 				Confidence:        inv.CouncilResult.FinalJudgment.Confidence,
@@ -212,6 +247,21 @@ func gqlInvStatus(s string) model.InvestigationStatus {
 	}
 }
 
+func gqlExecutionMode(s string) *model.ExecutionMode {
+	var m model.ExecutionMode
+	switch s {
+	case domain.ExecutionLive:
+		m = model.ExecutionModeLive
+	case domain.ExecutionFallback:
+		m = model.ExecutionModeFallback
+	case domain.ExecutionMixed:
+		m = model.ExecutionModeMixed
+	default:
+		return nil
+	}
+	return &m
+}
+
 func gqlStepStatus(s string) model.StepStatus {
 	switch s {
 	case domain.StepRunning:
@@ -232,6 +282,8 @@ func gqlModelConfig(c *domain.ModelConfig) *model.ModelConfig {
 		ModelAName:         c.ModelAName,
 		ModelBProvider:     c.ModelBProvider,
 		ModelBName:         c.ModelBName,
+		ModelCProvider:     c.ModelCProvider,
+		ModelCName:         c.ModelCName,
 		Temperature:        c.Temperature,
 		MaxTokens:          c.MaxTokens,
 		InvestigatorPrompt: c.InvestigatorPrompt,
@@ -295,5 +347,44 @@ func gqlJob(j *domain.FineTuneJob) *model.FineTuneJob {
 	return &model.FineTuneJob{
 		ID: j.ID, WorkspaceID: j.WorkspaceID, Status: j.Status, AdapterPath: j.AdapterPath,
 		Error: strPtr(j.Error), CreatedAt: j.CreatedAt.UTC().Format(time.RFC3339),
+	}
+}
+
+func gqlGitRepo(g *domain.GitRepo) *model.GitRepo {
+	if g == nil {
+		return &model.GitRepo{Connected: false}
+	}
+	return &model.GitRepo{URL: g.URL, Branch: g.Branch, Head: g.Head, Connected: g.Connected}
+}
+
+func gqlGeneration(g *domain.Generation) *model.Generation {
+	return &model.Generation{
+		ID: g.ID, ProjectID: g.ProjectID, InvestigationID: strPtr(g.InvestigationID),
+		Prompt: g.Prompt, FileName: g.FileName, RowCount: g.RowCount,
+		SchemaNote: g.SchemaNote, QualityNotes: g.QualityNotes, Confidence: g.Confidence,
+		Status: g.Status, Error: strPtr(g.Error), CreatedAt: g.CreatedAt.UTC().Format(time.RFC3339),
+	}
+}
+
+func gqlEvaluation(e *domain.Evaluation) *model.Evaluation {
+	metrics := make([]*model.MetricDelta, 0, len(e.Metrics))
+	for _, m := range e.Metrics {
+		metrics = append(metrics, &model.MetricDelta{Name: m.Name, Before: m.Before, After: m.After, Delta: m.Delta})
+	}
+	return &model.Evaluation{
+		ID: e.ID, ProjectID: e.ProjectID, InvestigationID: strPtr(e.InvestigationID),
+		GenerationID: strPtr(e.GenerationID), Summary: e.Summary, Recommendation: e.Recommendation,
+		Confidence: e.Confidence, Metrics: metrics, Status: e.Status, Error: strPtr(e.Error),
+		CreatedAt: e.CreatedAt.UTC().Format(time.RFC3339),
+	}
+}
+
+func gqlEntitlements(e domain.Entitlements) *model.Entitlements {
+	return &model.Entitlements{
+		Tier: gqlTier(e.Tier), MaxProjects: e.MaxProjects, MaxInvestigationsPerMonth: e.MaxInvestigationsPerMonth,
+		InvestigationsUsed: e.InvestigationsUsed, DeepAnalysis: e.DeepAnalysis, Council: e.Council,
+		Generate: e.Generate, Evaluate: e.Evaluate, GitMcp: e.GitMCP, ModelSelection: e.ModelSelection,
+		TeamWorkspace: e.TeamWorkspace, BillingConfigured: e.BillingConfigured, SsoEnabled: e.SSOEnabled,
+		DemoUpgrade: e.DemoUpgrade,
 	}
 }

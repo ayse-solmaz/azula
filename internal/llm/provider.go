@@ -3,10 +3,10 @@ package llm
 import "context"
 
 type CompletionRequest struct {
-	System    string
-	User      string
+	System      string
+	User        string
 	Temperature float64
-	MaxTokens int
+	MaxTokens   int
 }
 
 type CompletionResult struct {

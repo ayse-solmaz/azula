@@ -4,7 +4,7 @@
 
 Product is **ahead of this file’s old empty checkboxes**. Phase 1 Investigate + Council is implemented in Go/GraphQL/web. Delivery-spec items (MFA, trusted devices, GDPR, Electron, QLoRA) were pulled forward for the jury date. They are marked below where they exist in code.
 
-**Still deferred on purpose:** Generate, Evaluate, Git MCP, payments/Stripe, SSO/SAML, Kubernetes / multi-region.
+**Shipped this pass:** Generate, Evaluate, Git MCP, Stripe/Pro gates, OIDC SSO, org RBAC, Kubernetes starter manifests, **LLM diversity + Council aggregation + prompt/context docs**.
 
 ---
 
@@ -40,6 +40,12 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 - [x] GraphQL API
 - [x] Free tier limits (config-enforced project cap)
 - [x] Cursor rules + investigation skill
+- [x] Escalation reason shown in the investigation UI
+- [x] `executionMode` live/fallback/mixed badge (demo honesty)
+- [x] Token-budget file selection for Deep/Council
+- [x] Small gold-set eval (`samples/goldset`, `internal/eval`)
+- [x] CI: `.github/workflows/test.yml` + `lint.yml` (+ `govulncheck`, `npm audit`)
+- [x] Agentic security controls (HttpOnly session, Git SSRF, secret redaction, kill switch) — [AGENTIC_SECURITY.md](AGENTIC_SECURITY.md)
 - [x] Electron desktop — Windows pack (`scripts/pack-electron.ps1`); Mac DMG on macOS/CI only (`scripts/pack-electron.sh`)
 
 ### Success Criteria
@@ -54,7 +60,9 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 - Generate / Evaluate modes
 - Git MCP
 - Full team RBAC / SSO
-- Kubernetes / horizontal scale
+- Job queue / durable workers (Scale)
+- Refresh tokens
+- Executor / dedicated inference workers
 
 ---
 
@@ -65,13 +73,13 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 
 ### Deliverables
 
-- [ ] **Generate mode** — synthetic dataset from investigation context
-- [ ] **Evaluate mode** — compare original vs fixed dataset metrics
-- [ ] **Git MCP connector** — clone, blame, diff
+- [x] **Generate mode** — synthetic dataset from investigation context
+- [x] **Evaluate mode** — compare original vs fixed dataset metrics
+- [x] **Git MCP connector** — clone, blame, diff
 - [x] Version diff UI (compare / swap file versions on the project page)
-- [ ] Pro tier UI gates (upgrade prompts)
+- [x] Pro tier UI gates (upgrade prompts)
 - [x] Model selection (Fast/Deep names, temperature, role prompts on LLM dashboard)
-- [ ] Full analytics dashboard (Council metrics, model comparison) — LLMOps subset shipped
+- [x] Full analytics dashboard (Council metrics, model comparison) — LLMOps subset shipped
 - [ ] Investigation export (PDF) — GDPR JSON export exists, not PDF
 
 ### Success Criteria
@@ -90,10 +98,10 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 ### Deliverables
 
 - [x] Team workspaces (org create + email invite — delivery stub, not full product)
-- [x] Role-based access: Admin, Engineer, Viewer (org role; not a complete permission matrix)
+- [x] Role-based access: Admin, Engineer, Viewer (enforced on mutations)
 - [x] Shared investigation history (org workspace)
-- [ ] Payment integration (Stripe)
-- [ ] Pro tier activation
+- [x] Payment integration (Stripe Checkout + webhook; demo upgrade when keys are unset)
+- [x] Pro tier activation
 - [ ] Email notifications (investigation complete, limit warnings) — device OTP email only
 - [ ] Improved onboarding for team admins
 
@@ -120,7 +128,7 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 - [ ] Private MCP connectors (internal repos, databases)
 - [ ] Custom Council lineup (2–8 models)
 - [ ] Higher concurrent user limits (fixed 5 worker slots)
-- [ ] SSO (SAML/OIDC)
+- [x] SSO (OIDC authorization-code + ID token)
 - [x] Electron desktop app — Windows installer locally; Mac unsigned DMG via macOS or GitHub Actions
 - [ ] SLA and dedicated support tooling
 
@@ -140,7 +148,7 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 ### Deliverables
 
 - [ ] Job queue for long investigations (Bull/Redis)
-- [ ] Worker pool behind load balancer / Kubernetes
+- [x] Worker pool behind load balancer / Kubernetes (`deploy/k8s`)
 - [ ] Response caching
 - [x] Multi-provider model routing (OpenAI + Ollama; Anthropic/Gemini not wired)
 - [ ] MongoDB replica set
@@ -177,7 +185,7 @@ MVP ──▶ MVP+1 ──▶ Team ──▶ Enterprise
 | SSO | | | | ✓ | ✓ |
 | Kubernetes | | | | | ✓ |
 
-MFA, audit, GDPR export/delete, org invite, and LoRA shipped early for the 6 Sep 2026 delivery spec; they remain Enterprise-shaped in this matrix. Generate / Evaluate / Git MCP / Payment / SSO / K8s stay empty until those phases.
+MFA, audit, GDPR export/delete, org invite, and LoRA shipped early for the 6 Sep 2026 delivery spec; they remain Enterprise-shaped in this matrix. Generate / Evaluate / Git MCP / Stripe Pro / OIDC SSO / K8s starter manifests are implemented (SAML, multi-region, and a Redis job queue are still later).
 
 ---
 

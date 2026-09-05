@@ -184,14 +184,13 @@ Show contextual upgrade prompts when user hits a gated feature:
 
 ## 6. MVP Implementation
 
-For MVP, implement tier limits in config only — no payment integration.
+Tier limits are enforced in `internal/billing`. All users start on `free`.
 
-- All users start on `free` tier
-- Pro features are UI-gated (show lock icon + upgrade prompt)
-- `tier` field on User document defaults to `free`
-- Admin can manually set tier to `pro` for testing
-
-Payment integration (Stripe or similar) is Post-MVP.
+- Deep / Council / Generate / Evaluate / Git MCP require Pro
+- Monthly investigation cap (`FREE_TIER_MAX_INVESTIGATIONS`, default 10)
+- Stripe Checkout + webhook when `STRIPE_SECRET_KEY` and `STRIPE_PRICE_ID` are set
+- Without Stripe keys, `BILLING_DEMO` (default true) exposes `activateProDemo` for jury / local use
+- UI shows feature-specific upgrade prompts, not a generic lock
 
 ---
 

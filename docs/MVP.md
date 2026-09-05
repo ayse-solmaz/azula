@@ -107,11 +107,13 @@ The MVP is **not** a full platform. It is a focused proof that Azula's core valu
 **So that** I trust the conclusion more than a single model answer
 
 **Acceptance criteria:**
+- [ ] Investigator and Challenger use **different model families** when Ollama has them (Qwen vs Mistral, not Qwen vs Qwen-QLoRA alone)
 - [ ] Investigator model produces hypothesis + confidence + evidence
 - [ ] Challenger model questions Investigator and proposes alternative
 - [ ] Judge produces: agreements, disagreements, final judgment
+- [ ] Go aggregation records `consensus` | `disagreement` | `echo_chamber` and `needsReview`
 - [ ] Council output is structured JSON (see PRD schema)
-- [ ] UI renders all three sections clearly
+- [ ] UI renders all three sections clearly, including review flags
 
 ### US-6: Evidence Traceability
 
@@ -155,16 +157,19 @@ The MVP is **not** a full platform. It is a focused proof that Azula's core valu
 ```
 pending
   → fast_classify
-  → deep_analyze (optional, user-triggered or auto-escalate)
+  → deep_analyze
   → council
   → completed
 
 Error paths:
   any state → failed (with error message)
-  fast_classify → completed (if user skips deep + council)
 ```
 
-**Auto-escalation rule (MVP):** If fast model confidence < 0.7, automatically trigger deep analysis.
+**Pipeline:** Fast classification always continues into Deep analysis and Council (unless the Pro gate blocks Deep). Persist `escalationReason`. The investigation UI must show `escalationReason`.
+
+**Demo honesty:** Each run stores `executionMode` (`live` | `fallback` | `mixed`) and `fallbackStages`. The UI shows a badge so a canned fallback is never presented as a live model answer.
+
+**File context:** Deep and Council receive a token-budgeted file subset (not every project file). Fast classification uses file names only.
 
 ---
 
@@ -289,6 +294,6 @@ These ship immediately after MVP validation:
 2. **Evaluate mode** — compare original vs fixed dataset metrics
 3. **Git MCP** — clone repo, blame, diff
 4. **Version diff UI** — compare file versions across investigations
-5. **Pro tier** — unlock Deep + Council + higher limits
+5. **Pro tier** — unlock Deep + Council + higher limits (Stripe or demo upgrade)
 
 See [ROADMAP.md](ROADMAP.md) for full timeline.

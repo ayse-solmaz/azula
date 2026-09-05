@@ -1,0 +1,36 @@
+{
+  "id": "broken-pipeline",
+  "incidentType": "schema_mismatch",
+  "causeKeywords": ["schema", "customer_status", "oom", "leak"],
+  "fixKeywords": ["batch_size", "encode", "target_leak"],
+  "aggregation": "disagreement",
+  "needsReview": true,
+  "modelAName": "qwen2.5:1.5b",
+  "modelBName": "azula-incident",
+  "models": [
+    {
+      "role": "investigator",
+      "model": "azula-incident",
+      "hypothesis": "Schema drift in customer_status mixed types",
+      "confidence": 0.89,
+      "evidence": [
+        { "file": "training.log", "lines": "1-40" },
+        { "file": "dataset.jsonl", "lines": "1-20" }
+      ]
+    },
+    {
+      "role": "challenger",
+      "model": "qwen2.5:1.5b",
+      "hypothesis": "Target leak copies label into features",
+      "confidence": 0.74,
+      "evidence": [
+        { "file": "pipeline.py", "lines": "1-80" }
+      ]
+    }
+  ],
+  "finalJudgment": {
+    "mostLikelyCause": "Schema drift in customer_status, CUDA OOM from batch_size, and target leak of the label",
+    "confidence": 0.77,
+    "recommendedAction": "Re-encode customer_status, reduce batch_size, drop target_leak"
+  }
+}

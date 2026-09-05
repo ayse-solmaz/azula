@@ -1,18 +1,22 @@
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
-import { ConsentRecord, getToken, gql, setToken } from "./api";
+import { ConsentRecord, gql, goLogin, hasSession, setToken } from "./api";
+import { LanguageToggle, useI18n } from "./i18n";
 import LoginPage from "./pages/Login";
 import HomePage from "./pages/Home";
 import InvestigationPage from "./pages/Investigation";
 import DashboardPage from "./pages/Dashboard";
 import SecurityPage from "./pages/Security";
+import LoopPage from "./pages/Loop";
+import TrustPage from "./pages/Trust";
 
 function Guard({ children }: { children: React.ReactNode }) {
-  if (!getToken()) return <Navigate to="/login" replace />;
+  if (!hasSession()) return <Navigate to="/login" replace />;
   return children;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
   const [consent, setConsent] = useState<ConsentRecord | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -32,7 +36,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       );
       setConsent(data.recordConsent);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not record consent");
+      setError(e instanceof Error ? e.message : t("consentFail"));
     } finally {
       setBusy(false);
     }
@@ -48,33 +52,38 @@ function Shell({ children }: { children: React.ReactNode }) {
         </NavLink>
         <nav>
           <NavLink to="/" end>
-            investigate
+            {t("navProjects")}
           </NavLink>
-          <NavLink to="/dashboard">llm</NavLink>
-          <NavLink to="/security">security</NavLink>
+          <NavLink to="/dashboard">{t("navModels")}</NavLink>
+          <NavLink to="/security">{t("navAccount")}</NavLink>
         </nav>
         <div className="top-meta">
-          <div className="agent-status">workspace</div>
+          <LanguageToggle />
+          <div className="agent-status">{t("navWorkspace")}</div>
           <button
             type="button"
+            className="ghost"
             onClick={() => {
-              setToken(null);
-              window.location.href = "/login";
+              void gql(`mutation { logout }`)
+                .catch(() => undefined)
+                .finally(() => {
+                  setToken(null);
+                  goLogin();
+                });
             }}
           >
-            sign out
+            {t("signOut")}
           </button>
         </div>
       </header>
       {needsConsent && (
         <div className="consent-bar legal">
           <p>
-            Azula processes workspace files and prompts to run investigations (KVKK / GDPR). Data stays in your
-            MongoDB instance; you can export or delete it on the security page.
+            {t("consentBar")}
           </p>
           {error && <p className="error">{error}</p>}
-          <button type="button" disabled={busy} onClick={() => void accept()}>
-            {busy ? "saving…" : "i accept processing"}
+          <button type="button" className="primary" disabled={busy} onClick={() => void accept()}>
+            {busy ? t("consentSaving") : t("consentAccept")}
           </button>
         </div>
       )}
@@ -87,6 +96,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/trust" element={<TrustPage />} />
       <Route
         path="/"
         element={
@@ -103,6 +113,16 @@ export default function App() {
           <Guard>
             <Shell>
               <InvestigationPage />
+            </Shell>
+          </Guard>
+        }
+      />
+      <Route
+        path="/loop/:projectId"
+        element={
+          <Guard>
+            <Shell>
+              <LoopPage />
             </Shell>
           </Guard>
         }

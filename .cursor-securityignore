@@ -1,0 +1,13 @@
+uploads/**
+data/**
+samples/**
+.venv/**
+.venv-merge/**
+venv/**
+**/.venv-merge/**
+tools/cursor-security-mcp/**
+tools/cursor-security-src/**
+electron/web/**
+graph/generated.go
+*.exe
+.env

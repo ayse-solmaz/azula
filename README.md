@@ -13,6 +13,24 @@ Azula is an AI workspace for data and machine learning teams. It helps engineers
 | **Council** | Which hypothesis is correct? | Multi-model debate with agreements, disagreements, final judgment |
 | **Evaluate** | Is the proposed fix actually better? | Metrics comparison and validation report |
 
+## Why Council is not snake oil
+
+Two model slots are not “twice as true.” Azula measures agreement **in code**, not in marketing:
+
+- **Different families, same cause** (e.g. both name CUDA OOM from `batch_size`) → `consensus`, confidence up.
+- **Same family, same wording** (Qwen Fast vs Qwen QLoRA restating OOM) → `echo_chamber`, review flag. That is *not* 95% independent certainty.
+- **Different causes** (OOM vs memory leak / schema vs target leak) → `disagreement`, confidence down, `needsReview`.
+
+We score this with **type-match + keyword recall** on `samples/goldset/` (three hold-out incidents) and on the composite demo `samples/broken-pipeline/expected.json`. That is recall of gold phrases, **not** a public F1 leaderboard.
+
+## 6 Sep demo dataset
+
+The jury walkthrough is **`samples/broken-pipeline/`** (onboarding sample: schema drift + GPU OOM + target leak in one project). It is synthetic, in-repo, and seeded when you create the sample workspace — not a customer log dump.
+
+`samples/goldset/` (gpu-oom, schema-drift, target-leak) is the **hold-out scoring set**, split so each incident is primary. Do not train QLoRA on those folders.
+
+Live customer logs are out of scope for the deadline unless you upload them in the UI after the sample run.
+
 ## Documentation
 
 Start here:
@@ -30,7 +48,7 @@ Supporting specs:
 - [Monetization](docs/MONETIZATION.md)
 - [Analytics](docs/ANALYTICS.md)
 - [Fine-tune (Colab/Kaggle)](docs/COLAB_KAGGLE.md) — QLoRA training guide
-- [Fine-tune merge for Ollama](docs/FINETUNE.md)
+- [Prompting](docs/PROMPTING.md) — what the models are asked, token budget, how tests relate to live demo
 
 ## Shipped vs deferred (2026-09-04)
 
@@ -38,7 +56,7 @@ Supporting specs:
 
 **Not in git:** QLoRA weights (`adapters/azula-incident/merged-fp16`), packaged installers (`electron/dist`). Keep those local; the source and Modelfile are what belong on GitHub.
 
-**Intentionally not built:** Generate, Evaluate, Git MCP, payments, SSO, Kubernetes.
+**Intentionally deferred / incomplete:** public F1 benchmark, Claude as Model C, 6–7B default Challenger, PDF export.
 
 **Mac desktop:** `scripts/pack-electron.sh` on macOS, or the GitHub Action `desktop`. Windows cannot emit a `.dmg`.
 
@@ -107,13 +125,14 @@ bash scripts/pack-electron.sh
 # GraphQL playground: http://localhost:8080
 # Web UI: http://localhost:3000
 
-# Ollama — Model A (Fast) + Model B (QLoRA merge as azula-incident)
+# Ollama — Fast (Qwen) + optional diverse Challenger (Mistral) + QLoRA Deep (azula-incident)
 ollama pull qwen2.5:1.5b
+ollama pull mistral
 # After extracting the fp16 merge into adapters/azula-incident/merged-fp16:
 powershell -File scripts/import-azula-incident.ps1
 ```
 
-Weights in `adapters/azula-incident/merged-fp16/` are gitignored. The Ollama recipe is [`adapters/azula-incident/Modelfile`](adapters/azula-incident/Modelfile) (official Qwen2.5 chat template). Import patches `rope_theta` into `config.json` so Ollama does not emit `@` tokens. Default Model B name is `azula-incident` (see `.env.example`).
+Weights in `adapters/azula-incident/merged-fp16/` are gitignored. The Ollama recipe is [`adapters/azula-incident/Modelfile`](adapters/azula-incident/Modelfile) (official Qwen2.5 chat template). Import patches `rope_theta` into `config.json` so Ollama does not emit `@` tokens. Default Model B name is `azula-incident` (see `.env.example`). Council Challenger uses a **different family** when `mistral` (or Llama/DeepSeek) is installed so debate is not Qwen-vs-Qwen. Optional Model C: set `OPENAI_API_KEY` for an API judge on disagreement. Prompts and token budgets: [`docs/PROMPTING.md`](docs/PROMPTING.md). Agent security (MCP, sessions, kill switch): [`docs/AGENTIC_SECURITY.md`](docs/AGENTIC_SECURITY.md).
 
 Regenerate GraphQL after schema changes:
 

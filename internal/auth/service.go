@@ -114,12 +114,15 @@ func (s *Service) Register(ctx context.Context, email, password, deviceID, devic
 	}
 	now := time.Now().UTC()
 	user := &domain.User{
-		ID:           uuid.NewString(),
-		Email:        email,
-		PasswordHash: string(hash),
-		Tier:         domain.TierFree,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:                   uuid.NewString(),
+		Email:                email,
+		PasswordHash:         string(hash),
+		Tier:                 domain.TierFree,
+		PrefsVersion:         1,
+		NotifyEmail:          true,
+		NotifyInvestigations: true,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 	if deviceID != "" {
 		user.TrustedDevices = []domain.TrustedDevice{{DeviceID: deviceID, Name: deviceName, CreatedAt: now, LastSeenAt: now}}
@@ -160,6 +163,9 @@ func (s *Service) Login(ctx context.Context, email, password, mfaCode, deviceID,
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
 		return nil, domain.ErrInvalidCredentials
+	}
+	if user.Disabled {
+		return nil, domain.ErrAccountDisabled
 	}
 	if user.MFAEnabled {
 		if strings.TrimSpace(mfaCode) == "" {
@@ -360,10 +366,166 @@ func (s *Service) DisableMFA(ctx context.Context, userID, code string) (*domain.
 	return user, nil
 }
 
+func (s *Service) LoginOrRegisterSSO(ctx context.Context, email, subject, deviceID, deviceName string) (*domain.User, string, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || subject == "" {
+		return nil, "", domain.ErrInvalidInput
+	}
+	now := time.Now().UTC()
+	user, err := s.users.GetByEmail(ctx, email)
+	if err == domain.ErrNotFound {
+		rnd := make([]byte, 32)
+		_, _ = rand.Read(rnd)
+		hash, herr := bcrypt.GenerateFromPassword(rnd, bcrypt.DefaultCost)
+		if herr != nil {
+			return nil, "", herr
+		}
+		user = &domain.User{
+			ID:                   uuid.NewString(),
+			Email:                email,
+			PasswordHash:         string(hash),
+			Tier:                 domain.TierFree,
+			SSOSubject:           subject,
+			PrefsVersion:         1,
+			NotifyEmail:          true,
+			NotifyInvestigations: true,
+			CreatedAt:            now,
+			UpdatedAt:            now,
+		}
+		if deviceID != "" {
+			user.TrustedDevices = []domain.TrustedDevice{{DeviceID: deviceID, Name: deviceName, CreatedAt: now, LastSeenAt: now}}
+		}
+		if err := s.users.Create(ctx, user); err != nil {
+			return nil, "", err
+		}
+		if s.join != nil {
+			s.join.AttachInvites(ctx, user)
+			if user.OrgID != "" {
+				_ = s.users.Update(ctx, user)
+			}
+		}
+		ws := &domain.Workspace{
+			ID: uuid.NewString(), Name: "My ML Lab", OwnerID: user.ID, OrgID: user.OrgID, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := s.spaces.Create(ctx, ws); err != nil {
+			return nil, "", err
+		}
+	} else if err != nil {
+		return nil, "", err
+	} else {
+		if user.Disabled {
+			return nil, "", domain.ErrAccountDisabled
+		}
+		if user.SSOSubject == "" {
+			user.SSOSubject = subject
+		}
+		if deviceID != "" && !deviceKnown(user, deviceID) {
+			user.TrustedDevices = append(user.TrustedDevices, domain.TrustedDevice{DeviceID: deviceID, Name: deviceName, CreatedAt: now, LastSeenAt: now})
+		} else if deviceID != "" {
+			s.touchDevice(user, deviceID, deviceName)
+		}
+		if err := s.users.Update(ctx, user); err != nil {
+			return nil, "", err
+		}
+	}
+	s.logAudit(ctx, user.ID, "sso_login", "oidc")
+	tok, err := s.issueToken(user)
+	return user, tok, err
+}
+
 func (s *Service) RequireUser(ctx context.Context) (*domain.User, error) {
 	id := UserIDFrom(ctx)
 	if id == "" {
 		return nil, domain.ErrUnauthorized
 	}
-	return s.users.GetByID(ctx, id)
+	user, err := s.users.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if user.Disabled {
+		return nil, domain.ErrAccountDisabled
+	}
+	return user, nil
+}
+
+func (s *Service) UpdateProfile(ctx context.Context, displayName string) (*domain.User, error) {
+	user, err := s.RequireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(displayName)
+	if len(name) > 80 {
+		return nil, domain.ErrInvalidInput
+	}
+	user.DisplayName = name
+	if err := s.users.Update(ctx, user); err != nil {
+		return nil, err
+	}
+	s.logAudit(ctx, user.ID, "update_profile", "user")
+	return user, nil
+}
+
+func (s *Service) ChangePassword(ctx context.Context, current, next string) error {
+	user, err := s.RequireUser(ctx)
+	if err != nil {
+		return err
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(current)) != nil {
+		return domain.ErrInvalidCredentials
+	}
+	if len(next) < 8 {
+		return domain.ErrInvalidInput
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(next), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = string(hash)
+	if err := s.users.Update(ctx, user); err != nil {
+		return err
+	}
+	s.logAudit(ctx, user.ID, "change_password", "user")
+	return nil
+}
+
+func (s *Service) UpdatePrefs(ctx context.Context, notifyEmail, notifyInvestigations, notifyMarketing, shareUsage *bool) (*domain.User, error) {
+	user, err := s.RequireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if user.PrefsVersion == 0 {
+		user.NotifyEmail = true
+		user.NotifyInvestigations = true
+	}
+	if notifyEmail != nil {
+		user.NotifyEmail = *notifyEmail
+	}
+	if notifyInvestigations != nil {
+		user.NotifyInvestigations = *notifyInvestigations
+	}
+	if notifyMarketing != nil {
+		user.NotifyMarketing = *notifyMarketing
+	}
+	if shareUsage != nil {
+		user.ShareUsage = *shareUsage
+	}
+	user.PrefsVersion = 1
+	if err := s.users.Update(ctx, user); err != nil {
+		return nil, err
+	}
+	s.logAudit(ctx, user.ID, "update_prefs", "user")
+	return user, nil
+}
+
+func (s *Service) DeactivateAccount(ctx context.Context) error {
+	user, err := s.RequireUser(ctx)
+	if err != nil {
+		return err
+	}
+	user.Disabled = true
+	if err := s.users.Update(ctx, user); err != nil {
+		return err
+	}
+	s.logAudit(ctx, user.ID, "deactivate_account", "user")
+	return nil
 }

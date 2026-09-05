@@ -1,0 +1,3 @@
+WARNING Column 'customer_status' has unseen categories: ['premium', '2']
+WARNING Schema validation failed: expected int, got string at row 1204
+INFO Epoch 3 val_accuracy: 0.61

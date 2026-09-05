@@ -166,6 +166,9 @@ func TestPipelineMCPSampleAndCouncil(t *testing.T) {
 	if done.CouncilResult.FinalJudgment.MostLikelyCause == "" || done.CouncilResult.FinalJudgment.Confidence == 0 {
 		t.Fatalf("final judgment incomplete: %+v", done.CouncilResult.FinalJudgment)
 	}
+	if done.CouncilResult.Aggregation == "" {
+		t.Fatal("council aggregation missing")
+	}
 
 	mu.Lock()
 	used := append([]string{}, models...)
@@ -187,6 +190,12 @@ func TestPipelineMCPSampleAndCouncil(t *testing.T) {
 	}
 	if done.FastResult.IncidentType != "schema_mismatch" {
 		t.Fatalf("incidentType=%s", done.FastResult.IncidentType)
+	}
+	if done.ExecutionMode != domain.ExecutionLive {
+		t.Fatalf("executionMode=%s fallback=%v", done.ExecutionMode, done.FallbackStages)
+	}
+	if done.EscalationReason == "" || !strings.Contains(strings.ToLower(done.EscalationReason), "deep look") {
+		t.Fatalf("escalationReason=%q", done.EscalationReason)
 	}
 }
 
@@ -247,13 +256,14 @@ func TestLiveOllamaAzulaIncident(t *testing.T) {
 	})
 	invs := newMemInvs()
 	cfg := config.Config{
-		OllamaBaseURL:  "http://localhost:11434",
-		ModelAProvider: "ollama",
-		ModelAName:     "qwen2.5:1.5b",
-		ModelBProvider: "ollama",
-		ModelBName:     "azula-incident",
-		WorkerSlots:    5,
-		RequestTimeout: 90 * time.Second,
+		OllamaBaseURL:        "http://localhost:11434",
+		ModelAProvider:       "ollama",
+		ModelAName:           "qwen2.5:1.5b",
+		ModelBProvider:       "ollama",
+		ModelBName:           "azula-incident",
+		WorkerSlots:          5,
+		RequestTimeout:       90 * time.Second,
+		ForceCouncilOnSample: true,
 	}
 	svc := New(projects, invs, newMemConfigs(), files, llm.NewRouter(cfg), cfg)
 	inv := &domain.Investigation{
@@ -282,8 +292,180 @@ func TestLiveOllamaAzulaIncident(t *testing.T) {
 	if done.DeepResult == nil || done.DeepResult.RootCause == "" {
 		t.Fatal("missing deep result")
 	}
+	if done.CouncilResult == nil {
+		t.Fatal("sample live run must reach Council")
+	}
 	if strings.Contains(done.DeepResult.RootCause, "@@@") {
 		t.Fatalf("Model B still emitting garbage: %q", done.DeepResult.RootCause)
 	}
-	t.Logf("fast=%s deep=%s b=%s", done.FastResult.IncidentType, done.DeepResult.RootCause, done.ModelBName)
+	t.Logf("fast=%s deep=%s b=%s mode=%s agg=%s review=%v", done.FastResult.IncidentType, done.DeepResult.RootCause, done.ModelBName, done.ExecutionMode, func() string {
+		if done.CouncilResult == nil {
+			return "none"
+		}
+		return done.CouncilResult.Aggregation
+	}(), done.CouncilResult != nil && done.CouncilResult.NeedsReview)
+}
+
+func TestHighConfidenceStillRunsDeepAndCouncil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]string{{"name": "qwen2.5:1.5b"}}})
+			return
+		}
+		if r.URL.Path != "/api/chat" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"message": map[string]string{"content": `{"summary":"Clear CUDA OOM","incidentType":"memory_gpu","confidence":0.86}`},
+		})
+	}))
+	defer srv.Close()
+
+	files := mcp.NewFilesConnector(t.TempDir())
+	projectID := "skipproj"
+	_, err := files.SeedFromDir(context.Background(), projectID, filepath.Join(repoRoot(t), "samples", "goldset", "gpu-oom"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projects := newMemProjects()
+	_ = projects.Create(context.Background(), &domain.Project{ID: projectID, WorkspaceID: "ws1", Name: "gpu"})
+	invs := newMemInvs()
+	cfg := config.Config{OllamaBaseURL: srv.URL, ModelAProvider: "ollama", ModelAName: "qwen2.5:1.5b", ModelBProvider: "ollama", ModelBName: "azula-incident", WorkerSlots: 5, RequestTimeout: 10 * time.Second, ForceCouncilOnSample: true}
+	svc := New(projects, invs, newMemConfigs(), files, llm.NewRouter(cfg), cfg)
+	inv := &domain.Investigation{ID: "skip1", ProjectID: projectID, WorkspaceID: "ws1", Prompt: "why", Status: domain.StatusPending, Plan: DefaultPlan()}
+	_ = invs.Create(context.Background(), inv)
+	loaded, _ := invs.GetByID(context.Background(), inv.ID)
+	if err := svc.runPipeline(context.Background(), loaded); err != nil {
+		t.Fatal(err)
+	}
+	done, _ := invs.GetByID(context.Background(), inv.ID)
+	if done.Status != domain.StatusCompleted {
+		t.Fatalf("status=%s", done.Status)
+	}
+	if done.DeepResult == nil || done.CouncilResult == nil {
+		t.Fatal("high confidence must still run deep and council")
+	}
+	if len(done.FilesAccessed) == 0 {
+		t.Fatalf("deep stage must read files, accessed=%v", done.FilesAccessed)
+	}
+	if done.ExecutionMode != domain.ExecutionLive {
+		t.Fatalf("mode=%s", done.ExecutionMode)
+	}
+}
+
+func TestSampleForcesCouncilDespiteHighFast(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]string{{"name": "qwen2.5:1.5b"}, {"name": "azula-incident"}}})
+			return
+		}
+		if r.URL.Path != "/api/chat" {
+			http.NotFound(w, r)
+			return
+		}
+		raw, _ := io.ReadAll(r.Body)
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.Unmarshal(raw, &req)
+		sys := ""
+		for _, m := range req.Messages {
+			if m.Role == "system" {
+				sys = m.Content
+			}
+		}
+		payload := `{"agreements":["Both see data quality issues"],"disagreements":[{"topic":"Root cause","investigator":"schema drift","challenger":"target leakage"}],"finalJudgment":{"mostLikelyCause":"Schema drift in customer_status","confidence":0.91,"recommendedAction":"Fix schema"}}`
+		switch {
+		case strings.Contains(sys, "Fast"):
+			payload = `{"summary":"Clear schema drift","incidentType":"schema_mismatch","confidence":0.90}`
+		case strings.Contains(sys, "Deep"):
+			payload = `{"rootCause":"Schema drift in customer_status","confidence":0.88,"evidence":[{"file":"training.log","lines":"3-11","excerpt":"unseen categories"}],"suggestedFix":"Re-encode"}`
+		case strings.Contains(sys, "Investigator"):
+			payload = `{"role":"investigator","hypothesis":"Schema drift in customer_status","confidence":0.89,"evidence":[{"file":"dataset.jsonl","lines":"1-8","excerpt":"mixed types"}]}`
+		case strings.Contains(sys, "Challenger"):
+			payload = `{"role":"challenger","hypothesis":"Target leakage in pipeline.py","confidence":0.72,"evidence":[{"file":"pipeline.py","lines":"15-19","excerpt":"target_leak"}]}`
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]string{"content": payload}})
+	}))
+	defer srv.Close()
+
+	files := mcp.NewFilesConnector(t.TempDir())
+	projectID := "sampleforce"
+	_, err := files.SeedFromDir(context.Background(), projectID, filepath.Join(repoRoot(t), "samples", "broken-pipeline"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projects := newMemProjects()
+	_ = projects.Create(context.Background(), &domain.Project{
+		ID: projectID, WorkspaceID: "ws1", Name: "sample-broken-pipeline", IsSample: true,
+	})
+	invs := newMemInvs()
+	cfg := config.Config{
+		OllamaBaseURL: srv.URL, ModelAProvider: "ollama", ModelAName: "qwen2.5:1.5b",
+		ModelBProvider: "ollama", ModelBName: "azula-incident", WorkerSlots: 5, RequestTimeout: 10 * time.Second,
+		ForceCouncilOnSample: true,
+	}
+	svc := New(projects, invs, newMemConfigs(), files, llm.NewRouter(cfg), cfg)
+	inv := &domain.Investigation{ID: "force1", ProjectID: projectID, WorkspaceID: "ws1", Prompt: "why", Status: domain.StatusPending, Plan: DefaultPlan()}
+	_ = invs.Create(context.Background(), inv)
+	loaded, _ := invs.GetByID(context.Background(), inv.ID)
+	if err := svc.runPipeline(context.Background(), loaded); err != nil {
+		t.Fatal(err)
+	}
+	done, _ := invs.GetByID(context.Background(), inv.ID)
+	if done.Status != domain.StatusCompleted {
+		t.Fatalf("status=%s err=%s", done.Status, done.ErrorMessage)
+	}
+	if done.CouncilResult == nil || done.DeepResult == nil {
+		t.Fatal("sample project must run Deep and Council even when Fast is ≥ 70%")
+	}
+	if !strings.Contains(strings.ToLower(done.EscalationReason), "deep look") {
+		t.Fatalf("reason=%q", done.EscalationReason)
+	}
+}
+
+func TestFallbackExecutionMode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []any{}})
+			return
+		}
+		http.Error(w, "llm down", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	files := mcp.NewFilesConnector(t.TempDir())
+	projectID := "fbproj"
+	_, err := files.SeedFromDir(context.Background(), projectID, filepath.Join(repoRoot(t), "samples", "broken-pipeline"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projects := newMemProjects()
+	_ = projects.Create(context.Background(), &domain.Project{ID: projectID, WorkspaceID: "ws1", Name: "sample"})
+	invs := newMemInvs()
+	cfg := config.Config{OllamaBaseURL: srv.URL, ModelAProvider: "ollama", ModelAName: "qwen2.5:1.5b", ModelBProvider: "ollama", ModelBName: "azula-incident", WorkerSlots: 5, RequestTimeout: 2 * time.Second}
+	svc := New(projects, invs, newMemConfigs(), files, llm.NewRouter(cfg), cfg)
+	inv := &domain.Investigation{ID: "fb1", ProjectID: projectID, WorkspaceID: "ws1", Prompt: "why", Status: domain.StatusPending, Plan: DefaultPlan()}
+	_ = invs.Create(context.Background(), inv)
+	loaded, _ := invs.GetByID(context.Background(), inv.ID)
+	if err := svc.runPipeline(context.Background(), loaded); err != nil {
+		t.Fatal(err)
+	}
+	done, _ := invs.GetByID(context.Background(), inv.ID)
+	if done.Status != domain.StatusCompleted {
+		t.Fatalf("status=%s err=%s", done.Status, done.ErrorMessage)
+	}
+	if done.ExecutionMode != domain.ExecutionFallback {
+		t.Fatalf("mode=%s stages=%v", done.ExecutionMode, done.FallbackStages)
+	}
+	if done.CouncilResult == nil || done.CouncilResult.FinalJudgment.Confidence == 0 {
+		t.Fatal("fallback council missing")
+	}
+	if !strings.Contains(strings.ToLower(done.EscalationReason), "deep look") {
+		t.Fatalf("fallback should continue to deep look, reason=%q", done.EscalationReason)
+	}
 }

@@ -1,11 +1,15 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type UserRepository interface {
 	Create(ctx context.Context, user *User) error
 	GetByID(ctx context.Context, id string) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
+	GetByStripeCustomerID(ctx context.Context, customerID string) (*User, error)
 	Update(ctx context.Context, user *User) error
 	Delete(ctx context.Context, id string) error
 }
@@ -25,6 +29,7 @@ type ProjectRepository interface {
 	ListByWorkspace(ctx context.Context, workspaceID string) ([]Project, error)
 	CountByWorkspaceIDs(ctx context.Context, workspaceIDs []string) (int64, error)
 	AddFile(ctx context.Context, projectID string, file ProjectFile) (*Project, error)
+	SetGit(ctx context.Context, projectID, url, branch, head string) (*Project, error)
 	DeleteByWorkspaceIDs(ctx context.Context, workspaceIDs []string) error
 }
 
@@ -36,6 +41,7 @@ type InvestigationRepository interface {
 	StatsByWorkspace(ctx context.Context, workspaceID string) (total, completed, failed int, avgConfidence float64, err error)
 	DeleteByWorkspaceIDs(ctx context.Context, workspaceIDs []string) error
 	ListByWorkspace(ctx context.Context, workspaceID string) ([]Investigation, error)
+	CountByUserSince(ctx context.Context, userID string, since time.Time) (int64, error)
 }
 
 type ModelConfigRepository interface {
@@ -79,4 +85,20 @@ type OrganizationRepository interface {
 	GetByMemberEmail(ctx context.Context, email string) (*Organization, error)
 	Update(ctx context.Context, org *Organization) error
 	DeleteByOwner(ctx context.Context, ownerID string) error
+}
+
+type GenerationRepository interface {
+	Create(ctx context.Context, g *Generation) error
+	Update(ctx context.Context, g *Generation) error
+	GetByID(ctx context.Context, id string) (*Generation, error)
+	ListByProject(ctx context.Context, projectID string) ([]Generation, error)
+	DeleteByWorkspaceIDs(ctx context.Context, workspaceIDs []string) error
+}
+
+type EvaluationRepository interface {
+	Create(ctx context.Context, e *Evaluation) error
+	Update(ctx context.Context, e *Evaluation) error
+	GetByID(ctx context.Context, id string) (*Evaluation, error)
+	ListByProject(ctx context.Context, projectID string) ([]Evaluation, error)
+	DeleteByWorkspaceIDs(ctx context.Context, workspaceIDs []string) error
 }

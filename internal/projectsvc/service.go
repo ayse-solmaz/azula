@@ -14,8 +14,13 @@ import (
 
 type Access interface {
 	Authorize(ctx context.Context, userID, workspaceID, minRole string) error
+	AuthorizeOrg(ctx context.Context, userID, minRole string) error
 	ListWorkspaces(ctx context.Context, userID string) ([]domain.Workspace, error)
 	WorkspaceOrgID(ctx context.Context, userID string) (string, error)
+}
+
+type Caps interface {
+	ForUser(ctx context.Context, userID string) (domain.Entitlements, error)
 }
 
 type Service struct {
@@ -25,6 +30,8 @@ type Service struct {
 	maxFree    int
 	sampleDir  string
 	access     Access
+	caps       Caps
+	git        *mcp.Git
 }
 
 func New(workspaces domain.WorkspaceRepository, projects domain.ProjectRepository, files mcp.Connector, maxFreeProjects int, sampleDir string) *Service {
@@ -41,10 +48,23 @@ func (s *Service) SetAccess(a Access) {
 	s.access = a
 }
 
+func (s *Service) SetCaps(c Caps) {
+	s.caps = c
+}
+
+func (s *Service) SetGit(g *mcp.Git) {
+	s.git = g
+}
+
 func (s *Service) CreateWorkspace(ctx context.Context, userID, name string) (*domain.Workspace, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, domain.ErrInvalidInput
+	}
+	if s.access != nil {
+		if err := s.access.AuthorizeOrg(ctx, userID, "engineer"); err != nil {
+			return nil, err
+		}
 	}
 	now := time.Now().UTC()
 	ws := &domain.Workspace{ID: uuid.NewString(), Name: name, OwnerID: userID, CreatedAt: now, UpdatedAt: now}
@@ -76,7 +96,29 @@ func (s *Service) CreateProject(ctx context.Context, userID, workspaceID, name s
 		return nil, err
 	}
 
-	if ws.OrgID == "" {
+	if s.caps != nil {
+		e, err := s.caps.ForUser(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if e.MaxProjects > 0 {
+			owned, err := s.workspaces.ListByOwner(ctx, userID)
+			if err != nil {
+				return nil, err
+			}
+			ids := make([]string, 0, len(owned))
+			for _, w := range owned {
+				ids = append(ids, w.ID)
+			}
+			count, err := s.projects.CountByWorkspaceIDs(ctx, ids)
+			if err != nil {
+				return nil, err
+			}
+			if int(count) >= e.MaxProjects {
+				return nil, fmt.Errorf("%w: free tier allows %d projects — upgrade to Pro for unlimited projects", domain.ErrTierLimit, e.MaxProjects)
+			}
+		}
+	} else if ws.OrgID == "" {
 		owned, err := s.workspaces.ListByOwner(ctx, userID)
 		if err != nil {
 			return nil, err
@@ -204,6 +246,28 @@ func (s *Service) CanInvestigate(ctx context.Context, userID, projectID string) 
 	}
 	_, err = s.requireAccess(ctx, userID, p.WorkspaceID, "engineer")
 	return err
+}
+
+func (s *Service) ConnectGit(ctx context.Context, userID, projectID, repoURL, branch string) (*domain.GitRepo, error) {
+	if s.git == nil {
+		return nil, domain.ErrGitNotConnected
+	}
+	if err := s.CanInvestigate(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
+	repo, files, err := s.git.Clone(ctx, projectID, repoURL, branch)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range files {
+		if _, err := s.projects.AddFile(ctx, projectID, f); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := s.projects.SetGit(ctx, projectID, repo.URL, repo.Branch, repo.Head); err != nil {
+		return nil, err
+	}
+	return repo, nil
 }
 
 func (s *Service) ProjectsForWorkspace(ctx context.Context, userID, workspaceID string) ([]domain.Project, error) {

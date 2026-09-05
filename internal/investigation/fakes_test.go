@@ -56,6 +56,18 @@ func (s *memProjects) AddFile(_ context.Context, projectID string, file domain.P
 	return &cp, nil
 }
 
+func (s *memProjects) SetGit(_ context.Context, projectID, url, branch, head string) (*domain.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.m[projectID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	p.GitURL, p.GitBranch, p.GitHead = url, branch, head
+	cp := *p
+	return &cp, nil
+}
+
 type memInvs struct {
 	mu sync.Mutex
 	m  map[string]*domain.Investigation
@@ -176,5 +188,17 @@ func (s *memInvs) ListByWorkspace(_ context.Context, workspaceID string) ([]doma
 }
 
 func (s *memInvs) DeleteByWorkspaceIDs(_ context.Context, _ []string) error { return nil }
+
+func (s *memInvs) CountByUserSince(_ context.Context, userID string, since time.Time) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var n int64
+	for _, inv := range s.m {
+		if inv.UserID == userID && !inv.CreatedAt.Before(since) {
+			n++
+		}
+	}
+	return n, nil
+}
 
 func (s *memConfigs) DeleteByWorkspaceIDs(_ context.Context, _ []string) error { return nil }

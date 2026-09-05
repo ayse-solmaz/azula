@@ -32,6 +32,13 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Nested clone used only to vendor the MCP package
+tools/cursor-security-src/
+tools/cursor-security-mcp/dist/
+
+# Local Cursor MCP paths (use tools/cursor-security-mcp/mcp.json.example)
+.cursor/mcp.json
+
 # IDE
 .idea/
 .vscode/

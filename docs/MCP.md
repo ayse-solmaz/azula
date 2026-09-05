@@ -31,9 +31,21 @@ Default `MCP_FILE_ROOT=./uploads`
 
 Onboarding copies files from [`samples/broken-pipeline/`](../samples/broken-pipeline/) into the sample project directory.
 
-### Cursor MCP config (development)
+### Cursor MCP config (this repo)
 
-Add to your Cursor MCP settings (`~/.cursor/mcp.json` or project-level):
+Project file: [`.cursor/mcp.json`](../.cursor/mcp.json). It starts **cursor-security** (`@cursor-security/mcp` from [gurkanfikretgunak/cursor-security](https://github.com/gurkanfikretgunak/cursor-security)) so Agent can run `security_scan_full`, `security_score`, secrets/client/backend/agent scanners, and SARIF export.
+
+First-time setup (already done if `tools/cursor-security-mcp/dist/index.js` exists):
+
+```bash
+cd tools/cursor-security-mcp
+npm install
+npm run build
+```
+
+Then **Cursor → Settings → MCP** and enable `cursor-security` (approve the prompt). Ask: “Run a full security scan on this repo.”
+
+Optional extra (sample pipeline files only):
 
 ```json
 {
@@ -50,13 +62,16 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json` or project-level):
 }
 ```
 
-Adjust the path to your local `samples/broken-pipeline` or `uploads/{projectId}` directory.
-
 ### Security rules
 
 - Agents read only within `{MCP_FILE_ROOT}/{projectId}/`
 - Reject paths containing `..` (path traversal)
 - Max file size: 50MB per upload
+- Git clone: HTTPS only; no credentials in the URL; no private/loopback/link-local hosts (SSRF)
+- File bodies sent to models are redacted and marked untrusted — never treated as instructions
+- MCP reads are audit-logged (`mcp.read`)
+
+See [AGENTIC_SECURITY.md](AGENTIC_SECURITY.md).
 
 ---
 
@@ -66,24 +81,19 @@ Adjust the path to your local `samples/broken-pipeline` or `uploads/{projectId}`
 
 Clone repositories, run blame/diff, and trace code changes linked to pipeline failures.
 
-### Planned capabilities
+### Implementation
 
-- Clone repo by URL + branch
-- `git log`, `git blame`, `git diff` for changed files
-- Link commits to investigation timeline
+`internal/mcp/git.go` — all git subprocesses stay inside the MCP package. Resolvers never call `git` directly.
 
-### Cursor MCP config (future)
+- Clone HTTPS URL + branch into `{MCP_FILE_ROOT}/{projectId}/.repo`
+- Copy allowed file types (including nested paths, flattened as `dir__file.ext`) into the project directory and register them on the project record
+- Persist clone URL / branch / HEAD on the project
+- `git blame`, `git diff`, `git log` against the clone (nested paths allowed)
+- Reject `file://`, SSH, and path traversal in refs
 
-```json
-{
-  "mcpServers": {
-    "git": {
-      "command": "uvx",
-      "args": ["mcp-server-git", "--repository", "/path/to/repo"]
-    }
-  }
-}
-```
+### GraphQL
+
+`connectGitRepo`, `gitRepo`, `gitBlame`, `gitDiff`, `gitLog` — Pro-gated.
 
 ---
 

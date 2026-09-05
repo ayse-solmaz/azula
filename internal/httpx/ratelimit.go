@@ -8,10 +8,10 @@ import (
 )
 
 type limiter struct {
-	mu      sync.Mutex
-	hits    map[string][]time.Time
-	perMin  int
-	window  time.Duration
+	mu     sync.Mutex
+	hits   map[string][]time.Time
+	perMin int
+	window time.Duration
 }
 
 func RateLimit(perMin int, next http.Handler) http.Handler {

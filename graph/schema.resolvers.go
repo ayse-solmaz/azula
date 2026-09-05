@@ -9,6 +9,7 @@ import (
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/ayse-solmaz/azula/graph/model"
+	"github.com/ayse-solmaz/azula/internal/auth"
 	"github.com/ayse-solmaz/azula/internal/domain"
 )
 
@@ -18,6 +19,7 @@ func (r *mutationResolver) Register(ctx context.Context, email string, password 
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	auth.IssueSession(ctx, r.Cfg.WebURL, token, r.Cfg.JWTExpiry)
 	return &model.AuthPayload{Token: &token, User: gqlUser(user), MfaRequired: false, NewDevice: false}, nil
 }
 
@@ -33,11 +35,18 @@ func (r *mutationResolver) Login(ctx context.Context, email string, password str
 	}
 	if out.Token != "" {
 		payload.Token = &out.Token
+		auth.IssueSession(ctx, r.Cfg.WebURL, out.Token, r.Cfg.JWTExpiry)
 	}
 	if out.EphemeralCode != "" {
 		payload.EphemeralCode = &out.EphemeralCode
 	}
 	return payload, nil
+}
+
+// Logout is the resolver for the logout field.
+func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
+	auth.ClearSession(ctx, r.Cfg.WebURL)
+	return true, nil
 }
 
 // EnrollMfa is the resolver for the enrollMfa field.
@@ -138,8 +147,13 @@ func (r *mutationResolver) UpdateModelConfig(ctx context.Context, input model.Mo
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	if err := r.requireEngineer(ctx, user.ID, input.WorkspaceID); err != nil {
+	if err := r.requireAdmin(ctx, user.ID, input.WorkspaceID); err != nil {
 		return nil, mapErr(err)
+	}
+	if r.Billing != nil {
+		if err := r.Billing.Require(ctx, user.ID, "models"); err != nil {
+			return nil, mapErr(err)
+		}
 	}
 	in := domain.ModelConfig{WorkspaceID: input.WorkspaceID}
 	if input.ModelAProvider != nil {
@@ -153,6 +167,12 @@ func (r *mutationResolver) UpdateModelConfig(ctx context.Context, input model.Mo
 	}
 	if input.ModelBName != nil {
 		in.ModelBName = *input.ModelBName
+	}
+	if input.ModelCProvider != nil {
+		in.ModelCProvider = *input.ModelCProvider
+	}
+	if input.ModelCName != nil {
+		in.ModelCName = *input.ModelCName
 	}
 	if input.Temperature != nil {
 		in.Temperature = *input.Temperature
@@ -195,6 +215,26 @@ func (r *mutationResolver) StartInvestigation(ctx context.Context, projectID str
 	return gqlInvestigation(inv), nil
 }
 
+// CancelInvestigation is the resolver for the cancelInvestigation field.
+func (r *mutationResolver) CancelInvestigation(ctx context.Context, id string) (*model.Investigation, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	inv, err := r.Inv.Get(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := r.ProjectSvc.CanInvestigate(ctx, user.ID, inv.ProjectID); err != nil {
+		return nil, mapErr(err)
+	}
+	cancelled, err := r.Inv.Cancel(ctx, user.ID, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlInvestigation(cancelled), nil
+}
+
 // SwapFileVersion is the resolver for the swapFileVersion field.
 func (r *mutationResolver) SwapFileVersion(ctx context.Context, projectID string, fileName string, version int) (*model.ProjectFile, error) {
 	user, err := r.Auth.RequireUser(ctx)
@@ -217,6 +257,7 @@ func (r *mutationResolver) DeleteAccount(ctx context.Context) (bool, error) {
 	if err := r.GDPR.DeleteAccount(ctx, user.ID); err != nil {
 		return false, mapErr(err)
 	}
+	auth.ClearSession(ctx, r.Cfg.WebURL)
 	return true, nil
 }
 
@@ -248,7 +289,7 @@ func (r *mutationResolver) StartFineTuneJob(ctx context.Context, workspaceID str
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	if err := r.requireEngineer(ctx, user.ID, workspaceID); err != nil {
+	if err := r.requireAdmin(ctx, user.ID, workspaceID); err != nil {
 		return nil, mapErr(err)
 	}
 	job, err := r.Tune.Start(ctx, user.ID, workspaceID)
@@ -264,7 +305,7 @@ func (r *mutationResolver) AttachIncidentModel(ctx context.Context, workspaceID 
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	if err := r.requireEngineer(ctx, user.ID, workspaceID); err != nil {
+	if err := r.requireAdmin(ctx, user.ID, workspaceID); err != nil {
 		return nil, mapErr(err)
 	}
 	cfg, err := r.Tune.AttachModelB(ctx, workspaceID)
@@ -306,6 +347,153 @@ func (r *mutationResolver) InviteOrgMember(ctx context.Context, email string, ro
 	return gqlOrg(org), nil
 }
 
+// UpdateOrgMemberRole is the resolver for the updateOrgMemberRole field.
+func (r *mutationResolver) UpdateOrgMemberRole(ctx context.Context, email string, role string) (*model.Organization, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	org, err := r.Org.UpdateMemberRole(ctx, user.ID, email, role)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlOrg(org), nil
+}
+
+// RemoveOrgMember is the resolver for the removeOrgMember field.
+func (r *mutationResolver) RemoveOrgMember(ctx context.Context, email string) (*model.Organization, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	org, err := r.Org.RemoveMember(ctx, user.ID, email)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlOrg(org), nil
+}
+
+// GenerateDataset is the resolver for the generateDataset field.
+func (r *mutationResolver) GenerateDataset(ctx context.Context, projectID string, investigationID *string, prompt *string) (*model.Generation, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := r.ProjectSvc.CanInvestigate(ctx, user.ID, projectID); err != nil {
+		return nil, mapErr(err)
+	}
+	if r.Billing != nil {
+		if err := r.Billing.Require(ctx, user.ID, "generate"); err != nil {
+			return nil, mapErr(err)
+		}
+	}
+	g, err := r.Loop.Generate(ctx, user.ID, projectID, deref(investigationID), deref(prompt))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlGeneration(g), nil
+}
+
+// EvaluateFix is the resolver for the evaluateFix field.
+func (r *mutationResolver) EvaluateFix(ctx context.Context, projectID string, investigationID *string, generationID *string, prompt *string) (*model.Evaluation, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := r.ProjectSvc.CanInvestigate(ctx, user.ID, projectID); err != nil {
+		return nil, mapErr(err)
+	}
+	if r.Billing != nil {
+		if err := r.Billing.Require(ctx, user.ID, "evaluate"); err != nil {
+			return nil, mapErr(err)
+		}
+	}
+	ev, err := r.Loop.Evaluate(ctx, user.ID, projectID, deref(investigationID), deref(generationID), deref(prompt))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlEvaluation(ev), nil
+}
+
+// ConnectGitRepo is the resolver for the connectGitRepo field.
+func (r *mutationResolver) ConnectGitRepo(ctx context.Context, projectID string, url string, branch *string) (*model.GitRepo, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := r.ProjectSvc.CanInvestigate(ctx, user.ID, projectID); err != nil {
+		return nil, mapErr(err)
+	}
+	if r.Billing != nil {
+		if err := r.Billing.Require(ctx, user.ID, "git"); err != nil {
+			return nil, mapErr(err)
+		}
+	}
+	repo, err := r.ProjectSvc.ConnectGit(ctx, user.ID, projectID, url, deref(branch))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlGitRepo(repo), nil
+}
+
+// CreateCheckoutSession is the resolver for the createCheckoutSession field.
+func (r *mutationResolver) CreateCheckoutSession(ctx context.Context) (*model.CheckoutPayload, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	url, err := r.Billing.CreateCheckoutURL(user)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return &model.CheckoutPayload{URL: url}, nil
+}
+
+// ActivateProDemo is the resolver for the activateProDemo field.
+func (r *mutationResolver) ActivateProDemo(ctx context.Context) (*model.User, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	updated, err := r.Billing.ActivateProDemo(ctx, user.ID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlUser(updated), nil
+}
+
+// UpdateProfile is the resolver for the updateProfile field.
+func (r *mutationResolver) UpdateProfile(ctx context.Context, displayName string) (*model.User, error) {
+	user, err := r.Auth.UpdateProfile(ctx, displayName)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlUser(user), nil
+}
+
+func (r *mutationResolver) ChangePassword(ctx context.Context, currentPassword string, newPassword string) (bool, error) {
+	if err := r.Auth.ChangePassword(ctx, currentPassword, newPassword); err != nil {
+		return false, mapErr(err)
+	}
+	return true, nil
+}
+
+func (r *mutationResolver) UpdateAccountPrefs(ctx context.Context, notifyEmail *bool, notifyInvestigations *bool, notifyMarketing *bool, shareUsage *bool) (*model.User, error) {
+	user, err := r.Auth.UpdatePrefs(ctx, notifyEmail, notifyInvestigations, notifyMarketing, shareUsage)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlUser(user), nil
+}
+
+func (r *mutationResolver) DeactivateAccount(ctx context.Context) (bool, error) {
+	if err := r.Auth.DeactivateAccount(ctx); err != nil {
+		return false, mapErr(err)
+	}
+	auth.ClearSession(ctx, r.Cfg.WebURL)
+	return true, nil
+}
+
 // Investigations is the resolver for the investigations field.
 func (r *projectResolver) Investigations(ctx context.Context, obj *model.Project) ([]*model.Investigation, error) {
 	list, err := r.Inv.ListByProject(ctx, obj.ID)
@@ -317,6 +505,18 @@ func (r *projectResolver) Investigations(ctx context.Context, obj *model.Project
 		out = append(out, gqlInvestigation(&list[i]))
 	}
 	return out, nil
+}
+
+// GitRepo is the resolver for the gitRepo field.
+func (r *projectResolver) GitRepo(ctx context.Context, obj *model.Project) (*model.GitRepo, error) {
+	if r.Git == nil {
+		return gqlGitRepo(nil), nil
+	}
+	repo, err := r.Git.Status(ctx, obj.ID)
+	if err != nil {
+		return gqlGitRepo(nil), nil
+	}
+	return gqlGitRepo(repo), nil
 }
 
 // Me is the resolver for the me field.
@@ -540,6 +740,160 @@ func (r *queryResolver) AuditLogs(ctx context.Context) ([]*model.AuditLog, error
 	out := make([]*model.AuditLog, 0, len(list))
 	for _, a := range list {
 		out = append(out, &model.AuditLog{ID: a.ID, Action: a.Action, Resource: a.Resource, CreatedAt: a.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")})
+	}
+	return out, nil
+}
+
+// AuthFeatures is the resolver for the authFeatures field.
+func (r *queryResolver) AuthFeatures(ctx context.Context) (*model.AuthFeatures, error) {
+	sso := r.Cfg.OIDCIssuer != "" && r.Cfg.OIDCClientID != ""
+	return &model.AuthFeatures{
+		SsoEnabled:     sso,
+		BillingEnabled: r.Cfg.StripeSecretKey != "" && r.Cfg.StripePriceID != "",
+		DemoUpgrade:    r.Cfg.BillingDemo,
+	}, nil
+}
+
+// Entitlements is the resolver for the entitlements field.
+func (r *queryResolver) Entitlements(ctx context.Context) (*model.Entitlements, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	e, err := r.Billing.ForUser(ctx, user.ID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gqlEntitlements(e), nil
+}
+
+// Generations is the resolver for the generations field.
+func (r *queryResolver) Generations(ctx context.Context, projectID string) ([]*model.Generation, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if _, err := r.ProjectSvc.GetProject(ctx, user.ID, projectID); err != nil {
+		return nil, mapErr(err)
+	}
+	list, err := r.Loop.ListGenerations(ctx, projectID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*model.Generation, 0, len(list))
+	for i := range list {
+		out = append(out, gqlGeneration(&list[i]))
+	}
+	return out, nil
+}
+
+// Evaluations is the resolver for the evaluations field.
+func (r *queryResolver) Evaluations(ctx context.Context, projectID string) ([]*model.Evaluation, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if _, err := r.ProjectSvc.GetProject(ctx, user.ID, projectID); err != nil {
+		return nil, mapErr(err)
+	}
+	list, err := r.Loop.ListEvaluations(ctx, projectID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*model.Evaluation, 0, len(list))
+	for i := range list {
+		out = append(out, gqlEvaluation(&list[i]))
+	}
+	return out, nil
+}
+
+// GitRepo is the resolver for the gitRepo field.
+func (r *queryResolver) GitRepo(ctx context.Context, projectID string) (*model.GitRepo, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if _, err := r.ProjectSvc.GetProject(ctx, user.ID, projectID); err != nil {
+		return nil, mapErr(err)
+	}
+	repo, err := r.Git.Status(ctx, projectID)
+	if err != nil {
+		return gqlGitRepo(nil), nil
+	}
+	return gqlGitRepo(repo), nil
+}
+
+// GitBlame is the resolver for the gitBlame field.
+func (r *queryResolver) GitBlame(ctx context.Context, projectID string, path string) ([]*model.GitBlameLine, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if _, err := r.ProjectSvc.GetProject(ctx, user.ID, projectID); err != nil {
+		return nil, mapErr(err)
+	}
+	if r.Billing != nil {
+		if err := r.Billing.Require(ctx, user.ID, "git"); err != nil {
+			return nil, mapErr(err)
+		}
+	}
+	lines, err := r.Git.Blame(ctx, projectID, path)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*model.GitBlameLine, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, &model.GitBlameLine{Line: l.Line, Sha: l.SHA, Author: l.Author, Summary: l.Summary})
+	}
+	return out, nil
+}
+
+// GitDiff is the resolver for the gitDiff field.
+func (r *queryResolver) GitDiff(ctx context.Context, projectID string, refA *string, refB *string) (string, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return "", mapErr(err)
+	}
+	if _, err := r.ProjectSvc.GetProject(ctx, user.ID, projectID); err != nil {
+		return "", mapErr(err)
+	}
+	if r.Billing != nil {
+		if err := r.Billing.Require(ctx, user.ID, "git"); err != nil {
+			return "", mapErr(err)
+		}
+	}
+	diff, err := r.Git.Diff(ctx, projectID, deref(refA), deref(refB))
+	if err != nil {
+		return "", mapErr(err)
+	}
+	return diff, nil
+}
+
+// GitLog is the resolver for the gitLog field.
+func (r *queryResolver) GitLog(ctx context.Context, projectID string, limit *int) ([]*model.GitCommit, error) {
+	user, err := r.Auth.RequireUser(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if _, err := r.ProjectSvc.GetProject(ctx, user.ID, projectID); err != nil {
+		return nil, mapErr(err)
+	}
+	if r.Billing != nil {
+		if err := r.Billing.Require(ctx, user.ID, "git"); err != nil {
+			return nil, mapErr(err)
+		}
+	}
+	n := 20
+	if limit != nil {
+		n = *limit
+	}
+	list, err := r.Git.Log(ctx, projectID, n)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*model.GitCommit, 0, len(list))
+	for _, c := range list {
+		out = append(out, &model.GitCommit{Sha: c.SHA, Author: c.Author, Date: c.Date, Message: c.Message})
 	}
 	return out, nil
 }

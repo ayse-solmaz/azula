@@ -60,15 +60,15 @@ Not everything can be production-grade. Jury demo uses **Tier A** live + **Tier 
 - [x] Version swap — store 2 versions per file, swap in UI
 - [x] Load-based routing — round-robin or queue depth metric (real, simple)
 - [x] GDPR export — JSON dump of user data
-- [x] Enterprise org creation — basic org + invite (email list, no full RBAC)
+- [x] Enterprise org creation — org + email invite + **admin / engineer / viewer** RBAC on mutations
 - [x] KVKK consent banner + processing log table
 
 ### Tier C — Document + architecture slide only (intentionally not built)
 
-- [ ] Full horizontal scale (K8s, multi-region)
+- [x] Horizontal scale starter (K8s manifests in `deploy/k8s` — not multi-region)
 - [ ] Production LoRA training pipeline (GPU cluster)
-- [ ] Full RBAC matrix (admin/engineer/viewer)
-- [ ] SSO / SAML
+- [x] Full RBAC matrix (admin/engineer/viewer)
+- [x] SSO / OIDC (SAML not included)
 
 ---
 

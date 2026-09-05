@@ -18,7 +18,7 @@ type Mailer interface {
 }
 
 type Memory struct {
-	mu      sync.Mutex
+	mu       sync.Mutex
 	Messages []Message
 }
 

@@ -1,0 +1,8 @@
+{
+  "id": "target-leak",
+  "incidentType": "data_leakage",
+  "causeKeywords": ["leak", "label", "target"],
+  "fixKeywords": ["remove", "leak"],
+  "aggregation": "disagreement",
+  "needsReview": true
+}

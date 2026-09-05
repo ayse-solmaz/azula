@@ -41,7 +41,9 @@ const fastResult = await modelRouter.classify(context);
 
 **Target latency:** < 5 seconds (p95)
 
-**Auto-escalation:** If `confidence < 0.7`, proceed to Step 3 automatically.
+**Auto-escalation:** Always proceed to Deep and Council after Fast (unless Pro gates Deep). Store `escalationReason`. The UI must show `escalationReason`.
+
+**executionMode:** Record `live`, `fallback`, or `mixed` plus `fallbackStages`. Never present canned fallback output as a live model run.
 
 ### Step 3: Deep Analysis
 
@@ -62,7 +64,7 @@ const deepResult = await modelRouter.analyze(context);
 
 **Target latency:** < 30 seconds (p95)
 
-MCP reads required files during this step. Log which files were accessed.
+MCP reads **selected** files during this step (token budget — do not dump every file). Log which files were accessed.
 
 ### Step 4: AI Council
 
@@ -109,9 +111,11 @@ const councilResult = await modelRouter.runCouncil(context);
   "finalJudgment": {
     "mostLikelyCause": "Schema drift in `customer_status`",
     "confidence": 0.91,
-    "recommendedAction": "Remove or re-encode `customer_status`; retrain with corrected schema",
-    "simulation": null
-  }
+    "recommendedAction": "Remove or re-encode `customer_status`; retrain with corrected schema"
+  },
+  "aggregation": "disagreement",
+  "needsReview": true,
+  "aggregationNote": "Hypotheses diverge. Weighted vote picked the winner; flag for review."
 }
 ```
 
@@ -130,11 +134,11 @@ await investigationService.complete(investigationId, {
 
 | Agent | Model | Role |
 |-------|-------|------|
-| Investigator | Deep | Builds and defends root-cause hypothesis |
-| Challenger | Deep | Questions Investigator, proposes alternatives |
-| Judge | Fast/Judge | Synthesizes agreements, disagreements, final judgment |
+| Investigator | Deep (B) | Named identity: Azula Investigator. Builds and defends root-cause hypothesis from **selected** files |
+| Challenger | Diverse family if Ollama has one (Mistral/Llama/…), else Fast (A) | Questions Investigator, proposes alternatives — must not echo B |
+| Judge | OpenAI Model C when `OPENAI_API_KEY` is set, else Fast (A) | Narrative agreements/disagreements; Go then applies weighted vote |
 
-**Prompt principle:** Challenger must actively disagree or find weaknesses — not just produce a second opinion.
+Same-family agreement is `echo_chamber` (`needsReview`). Divergent hypotheses are `disagreement` with damped confidence. See `docs/PROMPTING.md`.
 
 ## MCP File Access in Dev
 
@@ -203,4 +207,5 @@ Run end-to-end test:
 - `docs/ARCHITECTURE.md` — state machine and data model
 - `docs/PRD.md` — Council output schema
 - `docs/ONBOARDING.md` — sample pipeline contents
+- `docs/PROMPTING.md` — prompt templates and context budget
 - `.cursor/rules/azula.mdc` — project conventions

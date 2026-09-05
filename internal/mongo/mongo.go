@@ -90,18 +90,30 @@ func (d *DB) ensureIndexes(ctx context.Context) error {
 	}
 
 	_, err = d.Database().Collection("FileVersions").Indexes().CreateOne(ctx, mongo.IndexModel{
-    Keys: bson.D{{Key: "projectId", Value: 1}, {Key: "fileName", Value: 1}, {Key: "version", Value: -1}},
-  })
-  if err != nil {
-    return fmt.Errorf("fileVersions index: %w", err)
-  }
-  _, err = d.Database().Collection("AuditLogs").Indexes().CreateOne(ctx, mongo.IndexModel{
-    Keys: bson.D{{Key: "userId", Value: 1}, {Key: "createdAt", Value: -1}},
-  })
-  if err != nil {
-    return fmt.Errorf("auditLogs index: %w", err)
-  }
-  return nil
+		Keys: bson.D{{Key: "projectId", Value: 1}, {Key: "fileName", Value: 1}, {Key: "version", Value: -1}},
+	})
+	if err != nil {
+		return fmt.Errorf("fileVersions index: %w", err)
+	}
+	_, err = d.Database().Collection("AuditLogs").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "userId", Value: 1}, {Key: "createdAt", Value: -1}},
+	})
+	if err != nil {
+		return fmt.Errorf("auditLogs index: %w", err)
+	}
+	_, err = d.Database().Collection("Generations").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "projectId", Value: 1}, {Key: "createdAt", Value: -1}},
+	})
+	if err != nil {
+		return fmt.Errorf("generations index: %w", err)
+	}
+	_, err = d.Database().Collection("Evaluations").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "projectId", Value: 1}, {Key: "createdAt", Value: -1}},
+	})
+	if err != nil {
+		return fmt.Errorf("evaluations index: %w", err)
+	}
+	return nil
 }
 
 func databaseFromURI(uri, fallback string) string {

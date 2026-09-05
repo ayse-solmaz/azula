@@ -19,13 +19,16 @@ func NewProjectRepo(db *mongo.Database) *ProjectRepo {
 }
 
 type projectDoc struct {
-	ID          string            `bson:"_id"`
-	WorkspaceID string            `bson:"workspaceId"`
-	Name        string            `bson:"name"`
-	IsSample    bool              `bson:"isSample"`
-	Files       []projectFileDoc  `bson:"files"`
-	CreatedAt   time.Time         `bson:"createdAt"`
-	UpdatedAt   time.Time         `bson:"updatedAt"`
+	ID          string           `bson:"_id"`
+	WorkspaceID string           `bson:"workspaceId"`
+	Name        string           `bson:"name"`
+	IsSample    bool             `bson:"isSample"`
+	Files       []projectFileDoc `bson:"files"`
+	GitURL      string           `bson:"gitUrl,omitempty"`
+	GitBranch   string           `bson:"gitBranch,omitempty"`
+	GitHead     string           `bson:"gitHead,omitempty"`
+	CreatedAt   time.Time        `bson:"createdAt"`
+	UpdatedAt   time.Time        `bson:"updatedAt"`
 }
 
 type projectFileDoc struct {
@@ -42,7 +45,8 @@ func toProject(d projectDoc) *domain.Project {
 	}
 	return &domain.Project{
 		ID: d.ID, WorkspaceID: d.WorkspaceID, Name: d.Name, IsSample: d.IsSample,
-		Files: files, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		Files: files, GitURL: d.GitURL, GitBranch: d.GitBranch, GitHead: d.GitHead,
+		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
 }
 
@@ -53,7 +57,8 @@ func (r *ProjectRepo) Create(ctx context.Context, project *domain.Project) error
 	}
 	_, err := r.col.InsertOne(ctx, projectDoc{
 		ID: project.ID, WorkspaceID: project.WorkspaceID, Name: project.Name, IsSample: project.IsSample,
-		Files: files, CreatedAt: project.CreatedAt, UpdatedAt: project.UpdatedAt,
+		Files: files, GitURL: project.GitURL, GitBranch: project.GitBranch, GitHead: project.GitHead,
+		CreatedAt: project.CreatedAt, UpdatedAt: project.UpdatedAt,
 	})
 	return err
 }
@@ -114,6 +119,17 @@ func (r *ProjectRepo) AddFile(ctx context.Context, projectID string, file domain
 		if err != nil {
 			return nil, err
 		}
+	}
+	return r.GetByID(ctx, projectID)
+}
+
+func (r *ProjectRepo) SetGit(ctx context.Context, projectID, url, branch, head string) (*domain.Project, error) {
+	now := time.Now().UTC()
+	_, err := r.col.UpdateOne(ctx, bson.M{"_id": projectID}, bson.M{
+		"$set": bson.M{"gitUrl": url, "gitBranch": branch, "gitHead": head, "updatedAt": now},
+	})
+	if err != nil {
+		return nil, err
 	}
 	return r.GetByID(ctx, projectID)
 }

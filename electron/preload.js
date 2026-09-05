@@ -1,13 +1,11 @@
-const { contextBridge } = require("electron");
-
-function arg(prefix) {
-  const hit = process.argv.find((a) => a.startsWith(prefix));
-  return hit ? hit.slice(prefix.length) : "";
-}
+const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("azulaDesktop", {
   shell: true,
-  graphqlUrl: arg("--azula-gql=") || "http://localhost:8080/graphql",
-  deviceId: arg("--azula-device="),
+  graphqlUrl: () => ipcRenderer.sendSync("azula:gql") || "http://127.0.0.1:8080/graphql",
+  deviceId: ipcRenderer.sendSync("azula:device") || "",
   deviceName: "Azula Desktop",
+  getToken: () => ipcRenderer.sendSync("azula:session:get") || "",
+  hasSession: () => Boolean(ipcRenderer.sendSync("azula:session:has")),
+  setSession: (token) => ipcRenderer.sendSync("azula:session:set", token || ""),
 });

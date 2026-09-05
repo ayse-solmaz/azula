@@ -1,0 +1,8 @@
+{
+  "id": "gpu-oom",
+  "incidentType": "memory_gpu",
+  "causeKeywords": ["oom", "batch_size", "cuda"],
+  "fixKeywords": ["batch"],
+  "aggregation": "echo_chamber",
+  "needsReview": true
+}

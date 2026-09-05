@@ -82,28 +82,23 @@
                  ┌───────────────┐
                  │ fast_classify │
                  └───────┬───────┘
-                         │
-            ┌────────────┼────────────┐
-            │ confidence < 0.7       │ user skips
-            ▼                        ▼
-    ┌──────────────┐          ┌───────────┐
-    │ deep_analyze │          │ completed │
-    └──────┬───────┘          └───────────┘
-           │
-           ▼
-      ┌─────────┐
-      │ council │
-      └────┬────┘
-           │
-           ▼
-      ┌───────────┐
-      │ completed │
-      └───────────┘
+                         ▼
+                 ┌───────────────┐
+                 │ deep_analyze  │
+                 └───────┬───────┘
+                         ▼
+                    ┌─────────┐
+                    │ council │
+                    └────┬────┘
+                         ▼
+                   ┌───────────┐
+                   │ completed │
+                   └───────────┘
 
   Any state ──error──▶ failed
 ```
 
-**State transitions are enforced in `InvestigationService`** — resolvers must not skip states.
+**State transitions are enforced in `InvestigationService`** — resolvers must not skip states. Deep and Council always run after Fast unless a Pro entitlement gate blocks Deep.
 
 ---
 
@@ -115,17 +110,21 @@ InvestigationService
        ▼
   ModelRouter.runCouncil(context)
        │
-       ├──▶ InvestigatorAgent (Deep model)
-       │         └── MCP: read files, build hypothesis
+       ├──▶ Investigator (Model B — Deep / QLoRA if attached)
+       │         └── MCP: ranked files under token budget
        │
-       ├──▶ ChallengerAgent (Deep model, different prompt)
-       │         └── MCP: read files, challenge hypothesis
+       ├──▶ Challenger (different Ollama family when installed, else Model A)
+       │         └── Must disagree; not a second copy of Investigator
        │
-       └──▶ JudgeAgent (Fast/Judge model)
-                 └── Synthesize: agreements, disagreements, final judgment
+       └──▶ Judge (Model C OpenAI if OPENAI_API_KEY set, else Model A)
+                 └── Narrative agreements / disagreements
+                       ▼
+                 Go weighted vote + echo-chamber detector
 ```
 
-**Parallelism:** Investigator and Challenger run in parallel. Judge waits for both.
+**Parallelism:** Investigator and Challenger run in parallel. Judge waits for both. Aggregation is **not** “they said the same thing so it is true”: same-family agreement is flagged `echo_chamber`.
+
+See [PROMPTING.md](PROMPTING.md) for templates and budgets.
 
 ---
 
@@ -237,32 +236,49 @@ interface Agent {
 
 ### 6.4 Investigations
 
+Canonical GraphQL: `Investigation` in [`graph/schema.graphqls`](../graph/schema.graphqls). Mongo document (`internal/domain`):
+
 ```typescript
 {
   _id: ObjectId,
   projectId: ObjectId,
+  workspaceId: ObjectId,
   userId: ObjectId,
   status: 'pending' | 'fast_classify' | 'deep_analyze' | 'council' | 'completed' | 'failed',
   prompt: string,
-  incidentType: string | null,
-  fastResult: {
-    summary: string,
-    incidentType: string,
-    confidence: number,
-    completedAt: Date
-  } | null,
-  deepResult: {
-    rootCause: string,
-    confidence: number,
-    evidence: Evidence[],
-    suggestedFix: string,
-    completedAt: Date
-  } | null,
+  plan: PlanStep[],
+  filesAccessed: string[],
+  fastResult: FastResult | null,
+  deepResult: DeepResult | null,
   councilResult: CouncilResult | null,
-  error: string | null,
-  startedAt: Date,
-  completedAt: Date | null
+  errorMessage: string | null,
+  modelAName: string | null,   // Fast / Challenger fallback
+  modelBName: string | null,   // Deep / Investigator
+  modelCName: string | null,   // Judge (OpenAI) when set
+  escalationReason: string | null,
+  executionMode: 'live' | 'fallback' | 'mixed' | null,
+  fallbackStages: string[],    // e.g. ["fast", "council"]
+  createdAt: Date,
+  updatedAt: Date
 }
+```
+
+There is **no** `council_state` or `badge_type` field. The Council result screen derives:
+
+```
+pending  ← status in {pending, fast_classify, deep_analyze, council} && councilResult == null
+complete ← councilResult != null && executionMode != fallback
+fallback ← executionMode == fallback
+```
+
+Badges (do not persist as a parallel enum):
+
+```
+fallback              ← executionMode == fallback
+echo_chamber          ← councilResult.aggregation == "echo_chamber"
+independent_consensus ← aggregation == "consensus"
+split_judgment        ← aggregation == "disagreement"
+needs_review          ← needsReview == true (overlay on any aggregation)
 ```
 
 ### 6.5 Messages
@@ -290,14 +306,17 @@ interface Agent {
 
 ### 6.7 CouncilResult
 
+Matches `CouncilResult` / `CouncilModel` in [`graph/schema.graphqls`](../graph/schema.graphqls). Go vote overlay: `internal/llm/council.go`.
+
 ```typescript
 {
   models: [
     {
       role: 'investigator' | 'challenger',
       hypothesis: string,
-      confidence: number,
-      evidence: Evidence[]
+      confidence: number,          // 0.0–1.0; UI displays Math.round(confidence * 100)
+      evidence: Evidence[],        // file + lines + excerpt (not a path-only list)
+      model: string | null         // provider model id; else use Investigation.modelAName / modelBName
     }
   ],
   agreements: string[],
@@ -307,11 +326,17 @@ interface Agent {
   finalJudgment: {
     mostLikelyCause: string,
     confidence: number,
-    recommendedAction: string,
-    simulation: object | null
-  }
+    recommendedAction: string
+  },
+  aggregation: 'consensus' | 'echo_chamber' | 'disagreement',
+  needsReview: boolean,
+  aggregationNote: string
 }
 ```
+
+Judge output is **not** a separate GraphQL type. The Judge writes `agreements` / `disagreements` / `finalJudgment`; Go then sets `aggregation`, `needsReview`, and `aggregationNote`. Same-family similar hypotheses become `echo_chamber` (review flag), not independent consensus. `modelFamilies` / `sameFamily` are computed at vote time and are not stored.
+
+On `executionMode: fallback`, do not present canned Council JSON as a live debate — UI shows Fast summary plus an explicit fallback badge. Mixed runs (`executionMode: mixed`) still render Council with a mixed-live warning.
 
 ### 6.8 ModelConfigs
 
@@ -345,45 +370,30 @@ interface Agent {
 
 ## 7. GraphQL Schema (MVP)
 
+**Source of truth:** [`graph/schema.graphqls`](../graph/schema.graphqls) (generated Go models in `graph/model`). Do not add parallel Council fields (`councilState`, `badgeType`, `isLiveModels`, `Judge.verdict`). The web client query is `INV_FIELDS` in `web/src/api.ts`.
+
+Council-relevant excerpt:
+
 ```graphql
-type User {
-  id: ID!
-  email: String!
-  tier: Tier!
+enum InvestigationStatus {
+  PENDING
+  FAST_CLASSIFY
+  DEEP_ANALYZE
+  COUNCIL
+  COMPLETED
+  FAILED
 }
 
-type Workspace {
-  id: ID!
-  name: String!
-  projects: [Project!]!
+enum ExecutionMode {
+  LIVE
+  FALLBACK
+  MIXED
 }
 
-type Project {
-  id: ID!
-  name: String!
-  isSample: Boolean!
-  files: [ProjectFile!]!
-  investigations: [Investigation!]!
-}
-
-type ProjectFile {
-  name: String!
-  path: String!
-  mimeType: String!
-  uploadedAt: String!
-}
-
-type Investigation {
-  id: ID!
-  status: InvestigationStatus!
-  prompt: String
-  incidentType: String
-  fastResult: FastResult
-  deepResult: DeepResult
-  councilResult: CouncilResult
-  messages: [Message!]!
-  startedAt: String!
-  completedAt: String
+type Evidence {
+  file: String!
+  lines: String!
+  excerpt: String!
 }
 
 type FastResult {
@@ -399,37 +409,58 @@ type DeepResult {
   suggestedFix: String!
 }
 
+type CouncilModel {
+  role: String!
+  hypothesis: String!
+  confidence: Float!
+  evidence: [Evidence!]!
+  model: String
+}
+
+type Disagreement {
+  topic: String!
+  investigator: String!
+  challenger: String!
+}
+
+type FinalJudgment {
+  mostLikelyCause: String!
+  confidence: Float!
+  recommendedAction: String!
+}
+
 type CouncilResult {
-  models: [CouncilModelOutput!]!
+  models: [CouncilModel!]!
   agreements: [String!]!
   disagreements: [Disagreement!]!
   finalJudgment: FinalJudgment!
+  aggregation: String!
+  needsReview: Boolean!
+  aggregationNote: String!
 }
 
-type AnalyticsSummary {
-  totalInvestigations: Int!
-  resolvedByAiPercent: Float!
-  avgInvestigationTimeSec: Float!
-  topRootCauses: [RootCauseStat!]!
-  fastModel: ModelStats!
-  deepModel: ModelStats!
-}
-
-enum InvestigationStatus {
-  PENDING
-  FAST_CLASSIFY
-  DEEP_ANALYZE
-  COUNCIL
-  COMPLETED
-  FAILED
-}
-
-enum Tier {
-  FREE
-  PRO
-  ENTERPRISE
+type Investigation {
+  id: ID!
+  projectId: ID!
+  prompt: String!
+  status: InvestigationStatus!
+  plan: [PlanStep!]!
+  filesAccessed: [String!]!
+  fastResult: FastResult
+  deepResult: DeepResult
+  councilResult: CouncilResult
+  errorMessage: String
+  modelAName: String
+  modelBName: String
+  modelCName: String
+  escalationReason: String
+  executionMode: ExecutionMode
+  fallbackStages: [String!]!
+  createdAt: String!
 }
 ```
+
+Web mapping helpers: `councilViewState` / `councilBadges` in `web/src/ui.tsx`.
 
 ---
 
@@ -508,16 +539,24 @@ MCP_FILE_ROOT=./uploads
 
 ## 11. Security Notes
 
-- JWT tokens expire after 24h (MVP)
-- File uploads: max 50MB per file, whitelist extensions
-- MCP reads scoped to project directory only (no path traversal)
-- API keys stored in environment variables, never in DB
-- Enterprise: audit log on all investigation and file access events
+See [AGENTIC_SECURITY.md](AGENTIC_SECURITY.md) and [SECURITY.md](SECURITY.md).
+
+- Web sessions: HttpOnly `azula_session` cookie (SameSite=Lax). Electron stores the JWT in the main process with OS `safeStorage` and attaches `Authorization` on GraphQL requests — the renderer never keeps the token in `localStorage`.
+- JWT max age defaults to 8h (`JWT_EXPIRY`)
+- File uploads: max 50MB, allowlisted extensions, project-scoped paths
+- Git MCP: HTTPS only; clone hosts that resolve to private/loopback/link-local addresses are rejected
+- LLM payloads: secret redaction + untrusted-file delimiters (prompt is not authorization)
+- Production: `AZULA_ENV=production` requires a non-default `JWT_SECRET`; GraphQL playground/introspection off unless `AZULA_GRAPHQL_PLAYGROUND=true`
+- Rate limits: 120 GraphQL req/min/IP; 20/min for login/register
+- Kill switch: `AZULA_KILL_SWITCH=true`; per-run `cancelInvestigation`
+- Security headers on the API; CSP/frame/nosniff on nginx
+- Audit: register/login plus `agent.start`, `agent.cancel`, `mcp.read`
 
 ---
 
 ## 12. Related Documents
 
-- [PRD.md](PRD.md) — product requirements
+- [AGENTIC_SECURITY.md](AGENTIC_SECURITY.md) — agent/MCP controls
+- [SECURITY.md](SECURITY.md) — disclosure and production checklist
 - [MVP.md](MVP.md) — scoped first release
 - [ROADMAP.md](ROADMAP.md) — phased delivery

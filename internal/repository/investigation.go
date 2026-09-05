@@ -116,3 +116,7 @@ func (r *InvestigationRepo) DeleteByWorkspaceIDs(ctx context.Context, workspaceI
 	_, err := r.col.DeleteMany(ctx, bson.M{"workspaceId": bson.M{"$in": workspaceIDs}})
 	return err
 }
+
+func (r *InvestigationRepo) CountByUserSince(ctx context.Context, userID string, since time.Time) (int64, error) {
+	return r.col.CountDocuments(ctx, bson.M{"userId": userID, "createdAt": bson.M{"$gte": since}})
+}

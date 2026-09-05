@@ -1,18 +1,32 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { gql, INV_FIELDS, Investigation, uploadProjectFile, User, Workspace } from "../api";
+import { Entitlements, formatApiError, gql, INV_FIELDS, Investigation, Project, uploadProjectFile, User, Workspace } from "../api";
+import { useI18n } from "../i18n";
+import { EmptyState, FileDropzone, FREE_TIER_MAX_PROJECTS, fileKind, formatWhen, isFreeTier, isProFeatureError, isTierLimitError, prettyStatus, statusTone, UpgradeBanner } from "../ui";
 
 const WORKSPACES_QUERY = `query {
-  me { id email orgRole }
+  me { id email orgRole tier }
+  entitlements { demoUpgrade generate evaluate gitMcp maxInvestigationsPerMonth investigationsUsed }
   workspaces {
     id name
     projects {
       id workspaceId name isSample
       files { name mimeType uploadedAt }
-      investigations { id status createdAt fastResult { incidentType confidence } }
+      investigations { id status createdAt executionMode fastResult { incidentType confidence } }
     }
   }
 }`;
+
+function runsOf(p: Project): Investigation[] {
+  return Array.isArray(p.investigations) ? p.investigations : [];
+}
+
+function normalizeSpaces(workspaces: Workspace[] | null | undefined): Workspace[] {
+  return (workspaces || []).map((ws) => ({
+    ...ws,
+    projects: (ws.projects || []).map((p) => ({ ...p, investigations: runsOf(p) })),
+  }));
+}
 
 type FileVer = { version: number; uploadedAt: string };
 
@@ -27,11 +41,31 @@ type Compare = {
   rightBody: string;
 };
 
-function canEdit(role: string | null | undefined) {
-  return role !== "viewer";
+function formatLoadError(e: unknown, apiDown: string, failed: string) {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/failed to fetch|cannot reach api|networkerror|load failed|econnrefused/i.test(msg)) {
+    return apiDown;
+  }
+  return msg || failed;
+}
+
+const RECENT_PROJECTS = 4;
+
+function projectRecency(p: Project) {
+  const latest = runsOf(p)[0]?.createdAt || "";
+  const file = p.files[0]?.uploadedAt || "";
+  return latest > file ? latest : file;
+}
+
+function sortProjects(projects: Project[]) {
+  return [...projects].sort((a, b) => {
+    if (a.isSample !== b.isSample) return a.isSample ? -1 : 1;
+    return projectRecency(b).localeCompare(projectRecency(a));
+  });
 }
 
 export default function HomePage() {
+  const { t, locale } = useI18n();
   const nav = useNavigate();
   const [me, setMe] = useState<User | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -39,18 +73,21 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [newName, setNewName] = useState("");
   const [compare, setCompare] = useState<Compare | null>(null);
+  const [ent, setEnt] = useState<Entitlements | null>(null);
 
   const editable = canEdit(me?.orgRole);
   const bootstrapped = useRef(false);
 
   async function load() {
-    const data = await gql<{ me: User; workspaces: Workspace[] }>(WORKSPACES_QUERY);
+    const data = await gql<{ me: User; workspaces: Workspace[]; entitlements?: Entitlements }>(WORKSPACES_QUERY);
+    if (!data.me) throw new Error(t("failed"));
     setMe(data.me);
-    let spaces = data.workspaces;
+    if (data.entitlements) setEnt(data.entitlements);
+    let spaces = normalizeSpaces(data.workspaces);
     if (!spaces.length) {
       await gql(`mutation { createWorkspace(name: "My ML Lab") { id name } }`);
       const again = await gql<{ workspaces: Workspace[] }>(WORKSPACES_QUERY);
-      spaces = again.workspaces;
+      spaces = normalizeSpaces(again.workspaces);
     }
     setWorkspaces(spaces);
     const first = spaces[0];
@@ -65,7 +102,7 @@ export default function HomePage() {
         );
         const seeded = await gql<{ me: User; workspaces: Workspace[] }>(WORKSPACES_QUERY);
         setMe(seeded.me);
-        setWorkspaces(seeded.workspaces);
+        setWorkspaces(normalizeSpaces(seeded.workspaces));
       } catch (e) {
         bootstrapped.current = false;
         throw e;
@@ -74,7 +111,7 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    load().catch((e) => setError(e.message));
+    load().catch((e) => setError(formatLoadError(e, t("apiDown"), t("failed"))));
   }, []);
 
   async function seedSample(workspaceId: string) {
@@ -110,7 +147,8 @@ export default function HomePage() {
       setNewName("");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
+      const msg = err instanceof Error ? err.message : "Failed";
+      setError(msg);
     } finally {
       setBusy(false);
     }
@@ -238,42 +276,126 @@ export default function HomePage() {
     }
   }
 
+  const projectCount = workspaces.reduce((n, ws) => n + (ws.projects?.length || 0), 0);
+  const atLimit = isFreeTier(me?.tier) && projectCount >= FREE_TIER_MAX_PROJECTS;
+  const limitError = error && isTierLimitError(error);
+
+  function renderTile(p: Project) {
+    const runs = runsOf(p);
+    const latest = runs[0];
+    const latestLabel = latest
+      ? latest.fastResult?.incidentType || prettyStatus(latest.status, t)
+      : t("notStarted");
+    return (
+      <article key={p.id} className="project-card compact">
+        <div className="project-header">
+          <h3 className="project-title">{p.name}</h3>
+          <div className="project-badges">
+            {p.isSample && <span className="badge accent">{t("sampleBadge")}</span>}
+            <span className="badge">{t("filesCount", { n: p.files.length })}</span>
+          </div>
+        </div>
+        <p className="project-status">
+          <span className={`badge ${statusTone(latest ? latest.status : "not started")}`}>{latestLabel}</span>
+          {latest ? ` · ${formatWhen(latest.createdAt, locale)}` : ""}
+        </p>
+        <div className="project-actions">
+          {editable && (
+            <button className="primary" disabled={busy} onClick={() => startInv(p.id)}>
+              {t("startInvestigation")}
+            </button>
+          )}
+          {latest && (
+            <button type="button" onClick={() => nav(`/investigation/${latest.id}`)}>
+              {t("openLatest")}
+            </button>
+          )}
+        </div>
+        <details className="archive-block">
+          <summary>{t("projectMore")}</summary>
+          {!!p.files.length && (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t("file")}</th>
+                  <th>{t("type")}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {p.files.map((f) => (
+                  <tr key={f.name}>
+                    <td>{f.name}</td>
+                    <td className="file-kind">{fileKind(f.name)}</td>
+                    <td>
+                      <button type="button" className="linkish" disabled={busy} onClick={() => void openCompare(p.id, f.name)}>
+                        {t("compare")}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {editable && <FileDropzone disabled={busy} onFiles={(files) => void onUpload(p.id, files)} />}
+          <button type="button" disabled={busy} onClick={() => nav(`/loop/${p.id}`)}>
+            {t("afterRunGenerate")}
+          </button>
+          {!!runs.length && (
+            <ul className="history">
+              {runs.map((inv) => (
+                <li key={inv.id}>
+                  <button className="linkish" type="button" onClick={() => nav(`/investigation/${inv.id}`)}>
+                    {inv.fastResult?.incidentType || prettyStatus(inv.status, t)} · {formatWhen(inv.createdAt, locale)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </details>
+      </article>
+    );
+  }
+
   return (
     <div className="page">
       {workspaces.map((ws) => (
         <div key={ws.id}>
           {editable && (
             <section className="panel">
-              <h2>quick project</h2>
-              <p className="feed-lead">
-                your pipeline failed. let&apos;s find out why. the sample project is loaded so you can start an investigation immediately.
-              </p>
-              {me?.orgRole === "viewer" && (
-                <p className="hint">viewer access: inspect files and history only.</p>
+              <h2>{t("addProject")}</h2>
+              {me?.orgRole === "viewer" && <p className="hint">{t("viewerHint")}</p>}
+              {error && !limitError && !isProFeatureError(error) && <p className="error">{error}</p>}
+              {isProFeatureError(error) && (
+                <UpgradeBanner title={t("proRequired")} text={error} demo={!!ent?.demoUpgrade} />
               )}
-              {error && <p className="error">{error}</p>}
-              <form className="stack-form" onSubmit={(e) => createProject(e, ws.id)}>
-                <label>
-                  project name
-                  <input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="e.g. search-ranker-sev2"
-                    required
-                  />
-                </label>
-                <p className="hint">
-                  name is just a label. the error below is a free-tier cap on how many projects you can own, not the name itself.
-                </p>
-                <div className="row-actions">
-                  <button type="submit" disabled={busy}>
-                    create project
-                  </button>
-                  <button type="button" disabled={busy} onClick={() => seedSample(ws.id)}>
-                    load sample pipeline
-                  </button>
-                </div>
-              </form>
+              {atLimit || limitError ? (
+                <UpgradeBanner
+                  title={t("projectLimitTitle", { n: FREE_TIER_MAX_PROJECTS })}
+                  text={t("projectLimitText")}
+                  demo={!!ent?.demoUpgrade}
+                />
+              ) : (
+                <form className="stack-form" onSubmit={(e) => createProject(e, ws.id)}>
+                  <label>
+                    {t("projectName")}
+                    <input
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder={t("projectNamePh")}
+                      required
+                    />
+                  </label>
+                  <div className="row-actions">
+                    <button className="primary" type="submit" disabled={busy}>
+                      {t("createProject")}
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => seedSample(ws.id)}>
+                      {t("addSampleAgain")}
+                    </button>
+                  </div>
+                </form>
+              )}
             </section>
           )}
           {!editable && error && (
@@ -284,107 +406,36 @@ export default function HomePage() {
           <section className="panel">
             <div className="feed-head">
               <h2>{ws.name}</h2>
-              <p className="feed-lead">projects, files, and investigation history for this workspace.</p>
             </div>
             {ws.projects.length === 0 && (
-              <div className="empty-state">
-                <p className="empty-title">no projects yet</p>
-                <p className="empty-text">create one or load the sample pipeline to start an investigation.</p>
-              </div>
+              <EmptyState
+                title={t("noProjects")}
+                text={t("noProjectsText")}
+              />
             )}
-            <div className="project-list">
-              {ws.projects.map((p) => (
-                <article key={p.id} className="project-card">
-                  <div className="project-header">
-                    <h3 className="project-title">{p.name}</h3>
-                    <div className="project-badges">
-                      {p.isSample && <span className="badge">sample</span>}
-                      <span className="badge">{p.files.length} files</span>
-                      <span className="badge">{p.investigations?.length || 0} runs</span>
-                    </div>
-                  </div>
-                  <dl className="project-meta">
-                    <div>
-                      <dt>files</dt>
-                      <dd>{p.files.length ? p.files.map((f) => f.name).join(", ") : "none yet"}</dd>
-                    </div>
-                    <div>
-                      <dt>latest run</dt>
-                      <dd>
-                        {p.investigations?.[0]
-                          ? `${p.investigations[0].fastResult?.incidentType || p.investigations[0].status} · ${p.investigations[0].createdAt.slice(0, 16).replace("T", " ")}`
-                          : "not started"}
-                      </dd>
-                    </div>
-                  </dl>
-                  {!!p.files.length && (
-                    <ul className="files">
-                      {p.files.map((f) => (
-                        <li key={f.name}>
-                          <span>{f.name}</span>
-                          <button
-                            type="button"
-                            className="linkish"
-                            disabled={busy}
-                            onClick={() => void openCompare(p.id, f.name)}
-                          >
-                            compare versions
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {editable && (
-                    <label className="upload">
-                      upload files
-                      <input
-                        type="file"
-                        multiple
-                        disabled={busy}
-                        accept=".log,.yaml,.yml,.py,.json,.jsonl,.csv,.txt"
-                        onChange={(e) => {
-                          void onUpload(p.id, e.target.files);
-                          e.target.value = "";
-                        }}
-                      />
-                    </label>
-                  )}
-                  <div className="project-actions">
-                    {editable && (
-                      <button disabled={busy} onClick={() => startInv(p.id)}>
-                        start investigation
-                      </button>
-                    )}
-                    {p.investigations?.[0] && (
-                      <button type="button" onClick={() => nav(`/investigation/${p.investigations![0].id}`)}>
-                        open latest run
-                      </button>
-                    )}
-                  </div>
-                  {!!p.investigations?.length && (
-                    <details className="archive-block">
-                      <summary>history · {p.investigations.length}</summary>
-                      <ul className="history">
-                        {p.investigations.map((inv) => (
-                          <li key={inv.id}>
-                            <button className="linkish" type="button" onClick={() => nav(`/investigation/${inv.id}`)}>
-                              {inv.fastResult?.incidentType || inv.status} · {inv.createdAt.slice(0, 16).replace("T", " ")}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+            {(() => {
+              const sorted = sortProjects(ws.projects);
+              const recent = sorted.slice(0, RECENT_PROJECTS);
+              const older = sorted.slice(RECENT_PROJECTS);
+              return (
+                <>
+                  <div className="project-list">{recent.map(renderTile)}</div>
+                  {older.length > 0 && (
+                    <details className="archive-block older-projects">
+                      <summary>{t("olderProjects", { n: older.length })}</summary>
+                      <div className="project-list">{older.map(renderTile)}</div>
                     </details>
                   )}
-                </article>
-              ))}
-            </div>
+                </>
+              );
+            })()}
           </section>
         </div>
       ))}
       {workspaces.length === 0 && (
         <section className="panel">
-          <h2>investigate</h2>
-          {error ? <p className="error">{error}</p> : <p className="feed-lead">loading workspace…</p>}
+          <h2>{t("navProjects")}</h2>
+          {error ? <p className="error">{error}</p> : <p className="feed-lead">{t("loadingWorkspace")}</p>}
         </section>
       )}
 
@@ -393,17 +444,17 @@ export default function HomePage() {
           <div className="panel modal-card">
             <div className="row bar">
               <h2>
-                {compare.fileName} — versions
+                {t("versionsTitle", { name: compare.fileName })}
               </h2>
               <button type="button" onClick={() => setCompare(null)}>
-                close
+                {t("close")}
               </button>
             </div>
-            <p className="feed-lead">active file vs a stored snapshot. restore writes the chosen snapshot back as current.</p>
+            <p className="feed-lead">{t("compareLead")}</p>
             <div className="compare-grid">
               <div>
                 <label>
-                  left
+                  {t("left")}
                   <select
                     value={compare.left === "current" ? "current" : String(compare.left)}
                     onChange={(e) => {
@@ -411,19 +462,19 @@ export default function HomePage() {
                       void loadSide(compare, "left", v);
                     }}
                   >
-                    <option value="current">current (active)</option>
+                    <option value="current">{t("currentActive")}</option>
                     {compare.versions.map((v) => (
                       <option key={`l-${v.version}`} value={v.version}>
-                        snapshot v{v.version}
+                        {t("snapshotV", { v: v.version })}
                       </option>
                     ))}
                   </select>
                 </label>
-                <pre className="file-body">{compare.leftBody || "(empty)"}</pre>
+                <pre className="file-body">{compare.leftBody || t("empty")}</pre>
               </div>
               <div>
                 <label>
-                  right
+                  {t("right")}
                   <select
                     value={compare.right || ""}
                     onChange={(e) => {
@@ -434,17 +485,17 @@ export default function HomePage() {
                   >
                     {compare.versions.map((v) => (
                       <option key={`r-${v.version}`} value={v.version}>
-                        snapshot v{v.version} · {v.uploadedAt.slice(0, 16).replace("T", " ")}
+                        {t("snapshotV", { v: v.version })} · {v.uploadedAt.slice(0, 16).replace("T", " ")}
                       </option>
                     ))}
                   </select>
                 </label>
-                <pre className="file-body">{compare.rightBody || "(no snapshot)"}</pre>
+                <pre className="file-body">{compare.rightBody || t("noSnapshot")}</pre>
               </div>
             </div>
             {editable && compare.right > 0 && (
               <button disabled={busy} type="button" onClick={() => void restoreVersion(compare, compare.right)}>
-                restore right snapshot as current
+                {t("restoreRight")}
               </button>
             )}
           </div>

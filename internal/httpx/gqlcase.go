@@ -26,6 +26,7 @@ var camelFields = func() [][2]string {
 		"fastResult", "deepResult", "councilResult", "errorMessage", "myOrganization",
 		"myConsent", "auditLogs", "enrollMfa", "deleteAccount", "exportMyData",
 		"llmOpsMetrics", "modelConfig", "fineTuneJobs", "startInvestigation",
+		"cancelInvestigation", "logout",
 		"revokeTrustedDevice", "attachIncidentModel", "startFineTuneJob",
 		"updateModelConfig", "createOrganization", "inviteOrgMember", "recordConsent",
 		"fileContent", "fileVersions", "fileVersionContent", "swapFileVersion",

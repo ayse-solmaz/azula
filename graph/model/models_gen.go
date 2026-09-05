@@ -16,12 +16,22 @@ type AuditLog struct {
 	CreatedAt string `json:"createdAt"`
 }
 
+type AuthFeatures struct {
+	SsoEnabled     bool `json:"ssoEnabled"`
+	BillingEnabled bool `json:"billingEnabled"`
+	DemoUpgrade    bool `json:"demoUpgrade"`
+}
+
 type AuthPayload struct {
 	Token         *string `json:"token,omitempty"`
 	User          *User   `json:"user,omitempty"`
 	MfaRequired   bool    `json:"mfaRequired"`
 	NewDevice     bool    `json:"newDevice"`
 	EphemeralCode *string `json:"ephemeralCode,omitempty"`
+}
+
+type CheckoutPayload struct {
+	URL string `json:"url"`
 }
 
 type ConsentRecord struct {
@@ -35,13 +45,17 @@ type CouncilModel struct {
 	Hypothesis string      `json:"hypothesis"`
 	Confidence float64     `json:"confidence"`
 	Evidence   []*Evidence `json:"evidence"`
+	Model      *string     `json:"model,omitempty"`
 }
 
 type CouncilResult struct {
-	Models        []*CouncilModel `json:"models"`
-	Agreements    []string        `json:"agreements"`
-	Disagreements []*Disagreement `json:"disagreements"`
-	FinalJudgment *FinalJudgment  `json:"finalJudgment"`
+	Models          []*CouncilModel `json:"models"`
+	Agreements      []string        `json:"agreements"`
+	Disagreements   []*Disagreement `json:"disagreements"`
+	FinalJudgment   *FinalJudgment  `json:"finalJudgment"`
+	Aggregation     string          `json:"aggregation"`
+	NeedsReview     bool            `json:"needsReview"`
+	AggregationNote string          `json:"aggregationNote"`
 }
 
 type DeepResult struct {
@@ -55,6 +69,37 @@ type Disagreement struct {
 	Topic        string `json:"topic"`
 	Investigator string `json:"investigator"`
 	Challenger   string `json:"challenger"`
+}
+
+type Entitlements struct {
+	Tier                      Tier `json:"tier"`
+	MaxProjects               int  `json:"maxProjects"`
+	MaxInvestigationsPerMonth int  `json:"maxInvestigationsPerMonth"`
+	InvestigationsUsed        int  `json:"investigationsUsed"`
+	DeepAnalysis              bool `json:"deepAnalysis"`
+	Council                   bool `json:"council"`
+	Generate                  bool `json:"generate"`
+	Evaluate                  bool `json:"evaluate"`
+	GitMcp                    bool `json:"gitMcp"`
+	ModelSelection            bool `json:"modelSelection"`
+	TeamWorkspace             bool `json:"teamWorkspace"`
+	BillingConfigured         bool `json:"billingConfigured"`
+	SsoEnabled                bool `json:"ssoEnabled"`
+	DemoUpgrade               bool `json:"demoUpgrade"`
+}
+
+type Evaluation struct {
+	ID              string         `json:"id"`
+	ProjectID       string         `json:"projectId"`
+	InvestigationID *string        `json:"investigationId,omitempty"`
+	GenerationID    *string        `json:"generationId,omitempty"`
+	Summary         string         `json:"summary"`
+	Recommendation  string         `json:"recommendation"`
+	Confidence      float64        `json:"confidence"`
+	Metrics         []*MetricDelta `json:"metrics"`
+	Status          string         `json:"status"`
+	Error           *string        `json:"error,omitempty"`
+	CreatedAt       string         `json:"createdAt"`
 }
 
 type Evidence struct {
@@ -90,20 +135,60 @@ type FineTuneJob struct {
 	CreatedAt   string  `json:"createdAt"`
 }
 
+type Generation struct {
+	ID              string  `json:"id"`
+	ProjectID       string  `json:"projectId"`
+	InvestigationID *string `json:"investigationId,omitempty"`
+	Prompt          string  `json:"prompt"`
+	FileName        string  `json:"fileName"`
+	RowCount        int     `json:"rowCount"`
+	SchemaNote      string  `json:"schemaNote"`
+	QualityNotes    string  `json:"qualityNotes"`
+	Confidence      float64 `json:"confidence"`
+	Status          string  `json:"status"`
+	Error           *string `json:"error,omitempty"`
+	CreatedAt       string  `json:"createdAt"`
+}
+
+type GitBlameLine struct {
+	Line    int    `json:"line"`
+	Sha     string `json:"sha"`
+	Author  string `json:"author"`
+	Summary string `json:"summary"`
+}
+
+type GitCommit struct {
+	Sha     string `json:"sha"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+	Message string `json:"message"`
+}
+
+type GitRepo struct {
+	URL       string `json:"url"`
+	Branch    string `json:"branch"`
+	Head      string `json:"head"`
+	Connected bool   `json:"connected"`
+}
+
 type Investigation struct {
-	ID            string              `json:"id"`
-	ProjectID     string              `json:"projectId"`
-	Prompt        string              `json:"prompt"`
-	Status        InvestigationStatus `json:"status"`
-	Plan          []*PlanStep         `json:"plan"`
-	FilesAccessed []string            `json:"filesAccessed"`
-	FastResult    *FastResult         `json:"fastResult,omitempty"`
-	DeepResult    *DeepResult         `json:"deepResult,omitempty"`
-	CouncilResult *CouncilResult      `json:"councilResult,omitempty"`
-	ErrorMessage  *string             `json:"errorMessage,omitempty"`
-	ModelAName    *string             `json:"modelAName,omitempty"`
-	ModelBName    *string             `json:"modelBName,omitempty"`
-	CreatedAt     string              `json:"createdAt"`
+	ID               string              `json:"id"`
+	ProjectID        string              `json:"projectId"`
+	Prompt           string              `json:"prompt"`
+	Status           InvestigationStatus `json:"status"`
+	Plan             []*PlanStep         `json:"plan"`
+	FilesAccessed    []string            `json:"filesAccessed"`
+	FastResult       *FastResult         `json:"fastResult,omitempty"`
+	DeepResult       *DeepResult         `json:"deepResult,omitempty"`
+	CouncilResult    *CouncilResult      `json:"councilResult,omitempty"`
+	ErrorMessage     *string             `json:"errorMessage,omitempty"`
+	ModelAName       *string             `json:"modelAName,omitempty"`
+	ModelBName       *string             `json:"modelBName,omitempty"`
+	ModelCName       *string             `json:"modelCName,omitempty"`
+	EscalationReason *string             `json:"escalationReason,omitempty"`
+	ExecutionMode    *ExecutionMode      `json:"executionMode,omitempty"`
+	FallbackStages   []string            `json:"fallbackStages"`
+	CreatedAt        string              `json:"createdAt"`
 }
 
 type LLMOpsMetrics struct {
@@ -123,6 +208,13 @@ type LLMOpsMetrics struct {
 	TopCauses           []string `json:"topCauses"`
 }
 
+type MetricDelta struct {
+	Name   string  `json:"name"`
+	Before float64 `json:"before"`
+	After  float64 `json:"after"`
+	Delta  float64 `json:"delta"`
+}
+
 type MfaEnrollPayload struct {
 	Secret     string `json:"secret"`
 	OtpauthURL string `json:"otpauthUrl"`
@@ -134,6 +226,8 @@ type ModelConfig struct {
 	ModelAName         string  `json:"modelAName"`
 	ModelBProvider     string  `json:"modelBProvider"`
 	ModelBName         string  `json:"modelBName"`
+	ModelCProvider     string  `json:"modelCProvider"`
+	ModelCName         string  `json:"modelCName"`
 	Temperature        float64 `json:"temperature"`
 	MaxTokens          int     `json:"maxTokens"`
 	InvestigatorPrompt string  `json:"investigatorPrompt"`
@@ -148,6 +242,8 @@ type ModelConfigInput struct {
 	ModelAName         *string  `json:"modelAName,omitempty"`
 	ModelBProvider     *string  `json:"modelBProvider,omitempty"`
 	ModelBName         *string  `json:"modelBName,omitempty"`
+	ModelCProvider     *string  `json:"modelCProvider,omitempty"`
+	ModelCName         *string  `json:"modelCName,omitempty"`
 	Temperature        *float64 `json:"temperature,omitempty"`
 	MaxTokens          *int     `json:"maxTokens,omitempty"`
 	InvestigatorPrompt *string  `json:"investigatorPrompt,omitempty"`
@@ -184,6 +280,7 @@ type Project struct {
 	IsSample       bool             `json:"isSample"`
 	Files          []*ProjectFile   `json:"files"`
 	Investigations []*Investigation `json:"investigations"`
+	GitRepo        *GitRepo         `json:"gitRepo,omitempty"`
 }
 
 type ProjectFile struct {
@@ -205,20 +302,85 @@ type TrustedDevice struct {
 }
 
 type User struct {
-	ID             string           `json:"id"`
-	Email          string           `json:"email"`
-	Tier           Tier             `json:"tier"`
-	MfaEnabled     bool             `json:"mfaEnabled"`
-	OrgID          *string          `json:"orgId,omitempty"`
-	OrgName        *string          `json:"orgName,omitempty"`
-	OrgRole        *string          `json:"orgRole,omitempty"`
-	TrustedDevices []*TrustedDevice `json:"trustedDevices"`
+	ID                   string           `json:"id"`
+	Email                string           `json:"email"`
+	DisplayName          string           `json:"displayName"`
+	Tier                 Tier             `json:"tier"`
+	MfaEnabled           bool             `json:"mfaEnabled"`
+	OrgID                *string          `json:"orgId,omitempty"`
+	OrgName              *string          `json:"orgName,omitempty"`
+	OrgRole              *string          `json:"orgRole,omitempty"`
+	TrustedDevices       []*TrustedDevice `json:"trustedDevices"`
+	SsoLinked            bool             `json:"ssoLinked"`
+	Disabled             bool             `json:"disabled"`
+	CreatedAt            string           `json:"createdAt"`
+	NotifyEmail          bool             `json:"notifyEmail"`
+	NotifyInvestigations bool             `json:"notifyInvestigations"`
+	NotifyMarketing      bool             `json:"notifyMarketing"`
+	ShareUsage           bool             `json:"shareUsage"`
 }
 
 type Workspace struct {
 	ID       string     `json:"id"`
 	Name     string     `json:"name"`
 	Projects []*Project `json:"projects"`
+}
+
+type ExecutionMode string
+
+const (
+	ExecutionModeLive     ExecutionMode = "LIVE"
+	ExecutionModeFallback ExecutionMode = "FALLBACK"
+	ExecutionModeMixed    ExecutionMode = "MIXED"
+)
+
+var AllExecutionMode = []ExecutionMode{
+	ExecutionModeLive,
+	ExecutionModeFallback,
+	ExecutionModeMixed,
+}
+
+func (e ExecutionMode) IsValid() bool {
+	switch e {
+	case ExecutionModeLive, ExecutionModeFallback, ExecutionModeMixed:
+		return true
+	}
+	return false
+}
+
+func (e ExecutionMode) String() string {
+	return string(e)
+}
+
+func (e *ExecutionMode) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ExecutionMode(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ExecutionMode", str)
+	}
+	return nil
+}
+
+func (e ExecutionMode) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ExecutionMode) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ExecutionMode) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }
 
 type InvestigationStatus string

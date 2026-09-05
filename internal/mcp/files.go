@@ -347,7 +347,7 @@ func (c *FilesConnector) ListFileVersions(_ context.Context, projectID, name str
 		}
 		out = append(out, domain.FileVersion{
 			ProjectID: projectID, FileName: filepath.Base(name), Version: n,
-			Path: filepath.Join(".versions", filepath.Base(name), e.Name()),
+			Path:      filepath.Join(".versions", filepath.Base(name), e.Name()),
 			CreatedAt: uploaded,
 		})
 	}

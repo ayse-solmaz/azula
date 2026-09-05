@@ -12,4 +12,4 @@ Pre-loaded project for Azula onboarding demo.
 | `dataset.jsonl` | Mixed int/string values in `customer_status` |
 | `metrics.json` | Train accuracy up, val accuracy down |
 
-Used by onboarding flow — see [docs/ONBOARDING.md](../docs/ONBOARDING.md).
+Scoring keywords plus Council fixture (`aggregation`, model names, confidence): [`expected.json`](expected.json). Composite demo is a **disagreement** with `needsReview` — not independent consensus.

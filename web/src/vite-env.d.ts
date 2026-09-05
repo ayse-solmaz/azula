@@ -2,9 +2,12 @@
 
 interface AzulaDesktop {
   shell?: boolean;
-  graphqlUrl?: string;
+  graphqlUrl?: string | (() => string);
   deviceId?: string;
   deviceName?: string;
+  getToken?: () => string;
+  hasSession?: () => boolean;
+  setSession?: (token: string | null) => void;
 }
 
 interface Window {

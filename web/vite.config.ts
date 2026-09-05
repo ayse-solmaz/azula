@@ -8,7 +8,9 @@ export default defineConfig({
     port: 3001,
     strictPort: true,
     proxy: {
-      "/graphql": "http://localhost:8080",
+      "/graphql": "http://127.0.0.1:8080",
+      "/auth": "http://127.0.0.1:8080",
+      "/billing": "http://127.0.0.1:8080",
     },
   },
 });

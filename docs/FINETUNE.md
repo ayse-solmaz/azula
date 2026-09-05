@@ -96,13 +96,25 @@ JSONL with instruction-style rows from Azula incident domain:
 {"instruction": "What config change fixes this pipeline failure?", "input": "batch_size: 128\nlearning_rate: 0.1", "output": "Reduce batch_size to 32 and learning_rate to 0.001."}
 ```
 
-**Sources for dataset:**
+**Sources for dataset (what we actually train on):**
 
-- `samples/broken-pipeline/` — synthetic pairs from logs/config/code
-- `data/finetune/incident_pairs.jsonl` — 50–200 rows enough for demo LoRA
-- Optional: user uploads JSONL via `startFineTuneJob`
+- `data/finetune/incident_pairs.jsonl` — instruction/input/output rows derived from the sample broken pipeline (OOM, schema drift, target leak, config). This is the **training** set.
+- `samples/broken-pipeline/` — the live demo files those pairs were written from (not dumped raw into the trainer).
+- `samples/goldset/` — **hold-out** incidents (`gpu-oom`, `schema-drift`, `target-leak`) with `expected.json`. Do not train on these folders.
 
-Minimum for jury: **≥50 quality pairs**.
+**Evaluation (before/after a merge):**
+
+| Metric | Where | What it measures |
+|--------|--------|------------------|
+| Keyword recall | `internal/eval.KeywordScore` | Fraction of gold `causeKeywords` / `fixKeywords` present in the model text |
+| Type match | `TypeMatch` | Fast `incidentType` vs gold |
+| Fast vs Council | `TestGoldSetCouncilBeatsFast` | Council judgment must beat a weak Fast baseline on the gold set |
+
+There is **no** published F1 on a large public pipeline-failure benchmark yet. The gold set is the measurable bar for this repo: if Council keyword recall does not beat Fast, the fine-tune (or the prompts) is not helping investigation.
+
+**Before/after protocol:** run the same `samples/goldset` cases with Model B = `qwen2.5:1.5b` vs `azula-incident` and compare `CouncilScore`. Keep the gold folders out of `incident_pairs.jsonl`.
+
+Minimum for jury: **≥50 quality pairs** in `incident_pairs.jsonl`.
 
 ---
 
@@ -244,5 +256,7 @@ azula/
 ## Related
 
 - [DELIVERY_SPEC.md](DELIVERY_SPEC.md) — fine-tune is Tier A (mandatory)
+- [PROMPTING.md](PROMPTING.md) — templates, few-shot, token budget
 - [samples/broken-pipeline/](../samples/broken-pipeline/) — source for training data
+- [samples/goldset/](../samples/goldset/) — hold-out evaluation incidents
 - `.env.example` — `FINETUNE_DEMO_MODE=false` for real training

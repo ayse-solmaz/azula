@@ -2,12 +2,14 @@ package graph
 
 import (
 	"github.com/ayse-solmaz/azula/internal/auth"
+	"github.com/ayse-solmaz/azula/internal/billing"
 	"github.com/ayse-solmaz/azula/internal/config"
 	"github.com/ayse-solmaz/azula/internal/domain"
 	"github.com/ayse-solmaz/azula/internal/finetune"
 	"github.com/ayse-solmaz/azula/internal/gdpr"
 	"github.com/ayse-solmaz/azula/internal/investigation"
 	"github.com/ayse-solmaz/azula/internal/llm"
+	"github.com/ayse-solmaz/azula/internal/loop"
 	"github.com/ayse-solmaz/azula/internal/mcp"
 	"github.com/ayse-solmaz/azula/internal/org"
 	"github.com/ayse-solmaz/azula/internal/projectsvc"
@@ -26,4 +28,7 @@ type Resolver struct {
 	GDPR         *gdpr.Service
 	Tune         *finetune.Service
 	Org          *org.Service
+	Billing      *billing.Service
+	Loop         *loop.Service
+	Git          *mcp.Git
 }

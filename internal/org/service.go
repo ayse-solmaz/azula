@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	RoleAdmin     = "admin"
-	RoleEngineer  = "engineer"
-	RoleViewer    = "viewer"
+	RoleAdmin    = "admin"
+	RoleEngineer = "engineer"
+	RoleViewer   = "viewer"
 )
 
 func rank(role string) int {
@@ -159,6 +159,24 @@ func (s *Service) AttachInvites(ctx context.Context, user *domain.User) {
 	}
 }
 
+func (s *Service) AuthorizeOrg(ctx context.Context, userID, minRole string) error {
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user.OrgID == "" {
+		return nil
+	}
+	role := user.OrgRole
+	if role == "" {
+		role = RoleViewer
+	}
+	if rank(role) < rank(minRole) {
+		return domain.ErrForbidden
+	}
+	return nil
+}
+
 func (s *Service) RoleFor(ctx context.Context, userID, workspaceID string) (string, error) {
 	ws, err := s.spaces.GetByID(ctx, workspaceID)
 	if err != nil {
@@ -228,4 +246,91 @@ func (s *Service) ListWorkspaces(ctx context.Context, userID string) ([]domain.W
 		out = append(out, w)
 	}
 	return out, nil
+}
+
+func (s *Service) UpdateMemberRole(ctx context.Context, adminID, email, role string) (*domain.Organization, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	role = strings.ToLower(strings.TrimSpace(role))
+	if rank(role) == 0 {
+		return nil, domain.ErrInvalidInput
+	}
+	admin, err := s.users.GetByID(ctx, adminID)
+	if err != nil {
+		return nil, err
+	}
+	if admin.OrgID == "" || admin.OrgRole != RoleAdmin {
+		return nil, domain.ErrForbidden
+	}
+	org, err := s.orgs.GetByID(ctx, admin.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	found := false
+	for i, m := range org.Members {
+		if !strings.EqualFold(m.Email, email) {
+			continue
+		}
+		if m.UserID == org.OwnerID && role != RoleAdmin {
+			return nil, domain.ErrForbidden
+		}
+		org.Members[i].Role = role
+		if m.UserID != "" {
+			if u, err := s.users.GetByID(ctx, m.UserID); err == nil {
+				u.OrgRole = role
+				_ = s.users.Update(ctx, u)
+			}
+		}
+		found = true
+		break
+	}
+	if !found {
+		return nil, domain.ErrNotFound
+	}
+	if err := s.orgs.Update(ctx, org); err != nil {
+		return nil, err
+	}
+	return org, nil
+}
+
+func (s *Service) RemoveMember(ctx context.Context, adminID, email string) (*domain.Organization, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	admin, err := s.users.GetByID(ctx, adminID)
+	if err != nil {
+		return nil, err
+	}
+	if admin.OrgID == "" || admin.OrgRole != RoleAdmin {
+		return nil, domain.ErrForbidden
+	}
+	org, err := s.orgs.GetByID(ctx, admin.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	var next []domain.OrgMember
+	removed := ""
+	for _, m := range org.Members {
+		if strings.EqualFold(m.Email, email) {
+			if m.UserID == org.OwnerID {
+				return nil, domain.ErrForbidden
+			}
+			removed = m.UserID
+			continue
+		}
+		next = append(next, m)
+	}
+	if len(next) == len(org.Members) {
+		return nil, domain.ErrNotFound
+	}
+	org.Members = next
+	if removed != "" {
+		if u, err := s.users.GetByID(ctx, removed); err == nil {
+			u.OrgID = ""
+			u.OrgName = ""
+			u.OrgRole = ""
+			_ = s.users.Update(ctx, u)
+		}
+	}
+	if err := s.orgs.Update(ctx, org); err != nil {
+		return nil, err
+	}
+	return org, nil
 }

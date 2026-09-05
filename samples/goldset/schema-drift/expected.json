@@ -1,0 +1,8 @@
+{
+  "id": "schema-drift",
+  "incidentType": "schema_mismatch",
+  "causeKeywords": ["schema", "customer_status", "unseen"],
+  "fixKeywords": ["encode", "schema"],
+  "aggregation": "consensus",
+  "needsReview": false
+}
