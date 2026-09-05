@@ -10,6 +10,7 @@ import {
   deepSkipped,
   executionLabel,
   executionTone,
+  prettyStatus,
   roleLabel,
   showCouncilDebate,
   stageCopy,
@@ -330,7 +331,7 @@ export default function InvestigationPage() {
             <p>{inv.escalationReason}</p>
           </div>
         ) : null}
-        <p className="hint">{t("status", { s: inv.status.replaceAll("_", " ") })}</p>
+        <p className="hint">{t("status", { s: prettyStatus(inv.status, t) })}</p>
         {running && (
           <div className="project-actions">
             <button
@@ -356,33 +357,41 @@ export default function InvestigationPage() {
         ) : null}
         {inv.status === "COMPLETED" && (
           <button type="button" className="primary" onClick={() => nav(`/loop/${inv.projectId}`)}>
-            {t("genJsonl")}
+            {t("continueFix")}
           </button>
         )}
         {inv.errorMessage && <p className="error">{inv.errorMessage}</p>}
-        {(inv.modelAName || inv.modelBName || inv.modelCName) && (
-          <p className="hint">
-            {t("stageFastShort")} {inv.modelAName || "—"} · {t("stageDeepShort")} {inv.modelBName || "—"}
-            {inv.modelCName ? t("judgeApi", { name: inv.modelCName }) : t("judgeLocal")}
-          </p>
-        )}
-        {inv.status === "COMPLETED" && (
-          <button
-            type="button"
-            onClick={() => {
-              const blob = new Blob([JSON.stringify(inv, null, 2)], { type: "application/json" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `azula-investigation-${inv.id}.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
-          >
-            {t("exportJson")}
-          </button>
-        )}
-        {!!inv.filesAccessed?.length && <p className="hint">{t("mcpFiles", { list: inv.filesAccessed.join(", ") })}</p>}
+        <details className="archive-block">
+          <summary>{t("techDetails")}</summary>
+          {(inv.modelAName || inv.modelBName || inv.modelCName) && (
+            <p className="hint">
+              {t("stageFastShort")} {inv.modelAName || "—"} · {t("stageDeepShort")} {inv.modelBName || "—"}
+              {inv.modelCName ? t("judgeApi", { name: inv.modelCName }) : t("judgeLocal")}
+            </p>
+          )}
+          {inv.status === "COMPLETED" && (
+            <button
+              type="button"
+              onClick={() => {
+                const blob = new Blob([JSON.stringify(inv, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `azula-investigation-${inv.id}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              {t("exportJson")}
+            </button>
+          )}
+          {!!inv.filesAccessed?.length && <p className="hint">{t("mcpFiles", { list: inv.filesAccessed.join(", ") })}</p>}
+        </details>
+        <p>
+          <Link className="linkish" to="/">
+            {t("backHome")}
+          </Link>
+        </p>
       </aside>
       <section className="stack">
         {inv.status === "COMPLETED" && (inv.councilResult?.finalJudgment || inv.deepResult) ? (
@@ -403,6 +412,11 @@ export default function InvestigationPage() {
                 </p>
               </>
             )}
+            <div className="project-actions">
+              <button type="button" className="primary" onClick={() => nav(`/loop/${inv.projectId}`)}>
+                {t("continueFix")}
+              </button>
+            </div>
           </article>
         ) : null}
         {debate && inv.councilResult ? (

@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Entitlements, gql, INV_FIELDS, Investigation, Project, uploadProjectFile, User, Workspace } from "../api";
 import { useI18n } from "../i18n";
-import { canEdit, EmptyState, FileDropzone, FREE_TIER_MAX_PROJECTS, fileKind, formatWhen, HowTo, isFreeTier, isProFeatureError, isTierLimitError, prettyStatus, statusTone, UpgradeBanner } from "../ui";
+import { canEdit, EmptyState, FileDropzone, FREE_TIER_MAX_PROJECTS, fileKind, formatWhen, HowTo, isFreeTier, isProFeatureError, isRunningStatus, isTierLimitError, prettyStatus, statusTone, UpgradeBanner } from "../ui";
 
 const WORKSPACES_QUERY = `query {
   me { id email orgRole tier }
@@ -74,6 +74,7 @@ export default function HomePage() {
   const [newName, setNewName] = useState("");
   const [compare, setCompare] = useState<Compare | null>(null);
   const [ent, setEnt] = useState<Entitlements | null>(null);
+  const [notice, setNotice] = useState("");
 
   const editable = canEdit(me?.orgRole);
   const bootstrapped = useRef(false);
@@ -125,6 +126,7 @@ export default function HomePage() {
         { workspaceId }
       );
       await load();
+      setNotice(t("sampleReady"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -146,6 +148,7 @@ export default function HomePage() {
       );
       setNewName("");
       await load();
+      setNotice(t("projectCreated"));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed";
       setError(msg);
@@ -283,9 +286,11 @@ export default function HomePage() {
   function renderTile(p: Project) {
     const runs = runsOf(p);
     const latest = runs[0];
-    const latestLabel = latest
-      ? latest.fastResult?.incidentType || prettyStatus(latest.status, t)
-      : t("notStarted");
+    const running = latest ? isRunningStatus(latest.status) : false;
+    const complete = (latest?.status || "").toUpperCase() === "COMPLETED";
+    const failed = (latest?.status || "").toUpperCase() === "FAILED";
+    const noFiles = !p.files.length && !p.isSample;
+    const latestLabel = latest ? prettyStatus(latest.status, t) : t("notStarted");
     return (
       <article key={p.id} className="project-card compact">
         <div className="project-header">
@@ -300,17 +305,37 @@ export default function HomePage() {
           {latest ? ` · ${formatWhen(latest.createdAt, locale)}` : ""}
         </p>
         <div className="project-actions">
-          {editable && (
-            <button className="primary" disabled={busy} onClick={() => startInv(p.id)}>
-              {t("startInvestigation")}
+          {running && latest && (
+            <button type="button" className="primary" onClick={() => nav(`/investigation/${latest.id}`)}>
+              {t("seeProgress")}
             </button>
           )}
-          {latest && (
+          {complete && latest && (
+            <button type="button" className="primary" onClick={() => nav(`/investigation/${latest.id}`)}>
+              {t("seeResults")}
+            </button>
+          )}
+          {complete && (
+            <button type="button" onClick={() => nav(`/loop/${p.id}`)}>
+              {t("afterRunGenerate")}
+            </button>
+          )}
+          {editable && !running && (
+            <button
+              className={complete || failed ? undefined : "primary"}
+              disabled={busy || noFiles}
+              onClick={() => startInv(p.id)}
+            >
+              {complete || failed ? t("startAnother") : t("startInvestigation")}
+            </button>
+          )}
+          {failed && latest && (
             <button type="button" onClick={() => nav(`/investigation/${latest.id}`)}>
               {t("openLatest")}
             </button>
           )}
         </div>
+        {noFiles && editable && <p className="disabled-why">{t("noFilesHint")}</p>}
         <details className="archive-block">
           <summary>{t("projectMore")}</summary>
           {!!p.files.length && (
@@ -338,15 +363,17 @@ export default function HomePage() {
             </table>
           )}
           {editable && <FileDropzone disabled={busy} onFiles={(files) => void onUpload(p.id, files)} />}
-          <button type="button" disabled={busy} onClick={() => nav(`/loop/${p.id}`)}>
-            {t("afterRunGenerate")}
-          </button>
+          {!complete && (
+            <button type="button" disabled={busy} onClick={() => nav(`/loop/${p.id}`)}>
+              {t("afterRunGenerate")}
+            </button>
+          )}
           {!!runs.length && (
             <ul className="history">
               {runs.map((inv) => (
                 <li key={inv.id}>
                   <button className="linkish" type="button" onClick={() => nav(`/investigation/${inv.id}`)}>
-                    {inv.fastResult?.incidentType || prettyStatus(inv.status, t)} · {formatWhen(inv.createdAt, locale)}
+                    {prettyStatus(inv.status, t)} · {formatWhen(inv.createdAt, locale)}
                   </button>
                 </li>
               ))}
@@ -369,43 +396,6 @@ export default function HomePage() {
       />
       {workspaces.map((ws) => (
         <div key={ws.id}>
-          {editable && (
-            <section className="panel">
-              <h2>{t("addProject")}</h2>
-              {me?.orgRole === "viewer" && <p className="hint">{t("viewerHint")}</p>}
-              {error && !limitError && !isProFeatureError(error) && <p className="error">{error}</p>}
-              {isProFeatureError(error) && (
-                <UpgradeBanner title={t("proRequired")} text={error} demo={!!ent?.demoUpgrade} />
-              )}
-              {atLimit || limitError ? (
-                <UpgradeBanner
-                  title={t("projectLimitTitle", { n: FREE_TIER_MAX_PROJECTS })}
-                  text={t("projectLimitText")}
-                  demo={!!ent?.demoUpgrade}
-                />
-              ) : (
-                <form className="stack-form" onSubmit={(e) => createProject(e, ws.id)}>
-                  <label>
-                    {t("projectName")}
-                    <input
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      placeholder={t("projectNamePh")}
-                      required
-                    />
-                  </label>
-                  <div className="row-actions">
-                    <button className="primary" type="submit" disabled={busy}>
-                      {t("createProject")}
-                    </button>
-                    <button type="button" disabled={busy} onClick={() => seedSample(ws.id)}>
-                      {t("addSampleAgain")}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </section>
-          )}
           {!editable && error && (
             <section className="panel">
               <p className="error">{error}</p>
@@ -416,6 +406,22 @@ export default function HomePage() {
               <h2>{ws.name}</h2>
               <p className="feed-lead">{t("workspaceLead")}</p>
             </div>
+            {notice && (
+              <div className="notice">
+                <p>{notice}</p>
+              </div>
+            )}
+            {error && !limitError && !isProFeatureError(error) && <p className="error">{error}</p>}
+            {isProFeatureError(error) && (
+              <UpgradeBanner title={t("proRequired")} text={error} demo={!!ent?.demoUpgrade} />
+            )}
+            {editable && !ws.projects.some((p) => p.isSample) && ws.projects.length > 0 && (
+              <div className="row-actions">
+                <button type="button" className="primary" disabled={busy} onClick={() => void seedSample(ws.id)}>
+                  {t("trySample")}
+                </button>
+              </div>
+            )}
             {ws.projects.length === 0 && (
               <EmptyState
                 title={t("noProjects")}
@@ -446,6 +452,40 @@ export default function HomePage() {
               );
             })()}
           </section>
+          {editable && (
+            <section className="panel">
+              <h2>{t("addProject")}</h2>
+              <p className="feed-lead">{t("addProjectLead")}</p>
+              {me?.orgRole === "viewer" && <p className="hint">{t("viewerHint")}</p>}
+              {atLimit || limitError ? (
+                <UpgradeBanner
+                  title={t("projectLimitTitle", { n: FREE_TIER_MAX_PROJECTS })}
+                  text={t("projectLimitText")}
+                  demo={!!ent?.demoUpgrade}
+                />
+              ) : (
+                <form className="stack-form" onSubmit={(e) => createProject(e, ws.id)}>
+                  <label>
+                    {t("projectName")}
+                    <input
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder={t("projectNamePh")}
+                      required
+                    />
+                  </label>
+                  <div className="row-actions">
+                    <button className="primary" type="submit" disabled={busy}>
+                      {t("createProject")}
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => seedSample(ws.id)}>
+                      {t("addSampleAgain")}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </section>
+          )}
         </div>
       ))}
       {workspaces.length === 0 && (

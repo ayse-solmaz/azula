@@ -79,9 +79,29 @@ export function statusTone(status?: string | null) {
   return "neutral";
 }
 
+export function isRunningStatus(status?: string | null) {
+  const s = (status || "").toUpperCase();
+  return ["PENDING", "FAST_CLASSIFY", "DEEP_ANALYZE", "COUNCIL"].includes(s);
+}
+
 export function prettyStatus(status?: string | null, t?: Translate) {
   if (!status) return t ? t("notStarted") : "Not started";
-  return status.replaceAll("_", " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+  switch (status.toUpperCase()) {
+    case "PENDING":
+      return t ? t("statusQueued") : "Queued";
+    case "FAST_CLASSIFY":
+      return t ? t("statusFast") : "Quick look";
+    case "DEEP_ANALYZE":
+      return t ? t("statusDeep") : "Deep look";
+    case "COUNCIL":
+      return t ? t("statusCouncil") : "Council";
+    case "COMPLETED":
+      return t ? t("statusComplete") : "Complete";
+    case "FAILED":
+      return t ? t("statusFailed") : "Failed";
+    default:
+      return status.replaceAll("_", " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+  }
 }
 
 export function roleLabel(role: string, t?: Translate) {
