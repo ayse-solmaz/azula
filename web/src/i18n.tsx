@@ -85,7 +85,7 @@ const en = {
   invLoadFail: "Could not load this investigation.",
   signOut: "Sign out",
   consentBar:
-    "Azula processes workspace files and prompts to run investigations (KVKK / GDPR). Data stays in your MongoDB instance; you can export or delete it on the Account page.",
+    "Azula processes account data, project files, and prompts solely to provide incident investigation services, under KVKK (Law No. 6698) and the GDPR. Data remains in your MongoDB instance; you may export or erase it from Account.",
   consentAccept: "I accept processing",
   consentSaving: "Saving…",
   consentFail: "Could not record consent",
@@ -103,7 +103,7 @@ const en = {
   deviceOtpHint:
     "This device is not on your trusted list yet. Check email or data/outbox for the 6-digit code. Other trusted devices stay signed in.",
   registerConsent:
-    "I agree to processing of project files and prompts for incident investigation (KVKK / GDPR). I can export or delete my data later.",
+    "I consent to processing of my account data and of project files and prompts I submit, solely to provide incident investigation services, under KVKK (Law No. 6698) and the GDPR. I may access, export, or erase my data at any time from Account.",
   signIn: "Sign in",
   createAccount: "Create account",
   working: "Working…",
@@ -403,7 +403,7 @@ const en = {
   upgradeTitle: "Upgrade to Pro",
   upgradeText: "Unlock Deep analysis, AI Council, Generate, Evaluate, Git MCP, and 100 investigations/month.",
   proActive: "Pro features are active on this account.",
-  consentTitle: "KVKK / GDPR consent",
+  consentTitle: "KVKK (Law No. 6698) / GDPR consent",
   consentAccepted: "processing of logs, configs, and prompts for investigation. accepted {when}.",
   consentMissing: "processing of logs, configs, and prompts for investigation. not recorded yet — accept the banner or register with the consent checkbox.",
   devicesTitle: "Trusted devices",
@@ -506,7 +506,7 @@ const en = {
   privacyTitle: "Privacy",
   privacyLead: "Azula is a B2B investigation workspace. There is no public social profile, location tracking, or ad personalization.",
   shareUsage: "Share anonymized product usage to improve Azula",
-  privacyPolicy: "Privacy & processing (KVKK / GDPR)",
+  privacyPolicy: "Privacy and data processing (KVKK Law No. 6698 / GDPR)",
   trustPage: "Agent security & trust",
   noPublicProfile: "Profile visibility is private to your org members. There is no follower graph.",
   billingLead: "Subscription depth (Fast vs Deep + Council), not seat count. Cards are processed by Stripe when billing is configured.",
@@ -606,7 +606,7 @@ const tr: { [K in keyof typeof en]: string } = {
   invLoadFail: "Bu soruşturma yüklenemedi.",
   signOut: "Çıkış",
   consentBar:
-    "Azula soruşturma için çalışma alanı dosyalarını ve promptları işler (KVKK / GDPR). Veri senin MongoDB örneğinde kalır; Hesap sayfasından dışa aktarabilir veya silebilirsin.",
+    "Azula, hesap verilerini, proje dosyalarını ve prompt içeriklerini olay incelemesi hizmetinin sunulması amacıyla 6698 sayılı KVKK ve GDPR kapsamında işler. Veriler MongoDB örneğinizde tutulur; Hesap sayfasından dışa aktarabilir veya silebilirsiniz.",
   consentAccept: "İşlemeyi kabul ediyorum",
   consentSaving: "Kaydediliyor…",
   consentFail: "Onay kaydedilemedi",
@@ -624,7 +624,7 @@ const tr: { [K in keyof typeof en]: string } = {
   deviceOtpHint:
     "Bu cihaz henüz güvenilir listede değil. E-posta veya data/outbox içindeki 6 haneli koda bak. Diğer güvenilir cihazlar oturumda kalır.",
   registerConsent:
-    "Olay incelemesi için proje dosyaları ve promptların işlenmesini kabul ediyorum (KVKK / GDPR). Veriyi sonra dışa aktarabilir veya silebilirim.",
+    "Hesap verilerimin ve yüklediğim proje dosyaları ile prompt içeriklerinin, olay incelemesi hizmetinin sunulması amacıyla 6698 sayılı KVKK ve GDPR kapsamında işlenmesine onay veriyorum. Verilerime Hesap sayfasından erişebilir, bunları dışa aktarabilir veya silebilirim.",
   signIn: "Giriş yap",
   createAccount: "Hesap oluştur",
   working: "Çalışıyor…",
@@ -923,7 +923,7 @@ const tr: { [K in keyof typeof en]: string } = {
   upgradeTitle: "Pro’ya geç",
   upgradeText: "Deep analiz, AI Council, Üret, Değerlendir, Git MCP ve ayda 100 soruşturma.",
   proActive: "Bu hesapta Pro özellikleri açık.",
-  consentTitle: "KVKK / GDPR onayı",
+  consentTitle: "KVKK (6698 sayılı Kanun) / GDPR onayı",
   consentAccepted: "log, config ve promptların soruşturma için işlenmesi. kabul {when}.",
   consentMissing: "log, config ve promptların soruşturma için işlenmesi. henüz kayıt yok — banner’ı kabul et veya kayıtta onay kutusunu işaretle.",
   devicesTitle: "Güvenilir cihazlar",
@@ -1025,7 +1025,7 @@ const tr: { [K in keyof typeof en]: string } = {
   privacyTitle: "Gizlilik",
   privacyLead: "Azula B2B soruşturma alanıdır. Herkese açık sosyal profil, konum takibi veya reklam kişiselleştirme yok.",
   shareUsage: "Azula’yı iyileştirmek için anonim ürün kullanımını paylaş",
-  privacyPolicy: "Gizlilik ve işleme (KVKK / GDPR)",
+  privacyPolicy: "Gizlilik ve veri işleme (6698 sayılı KVKK / GDPR)",
   trustPage: "Ajan güvenliği ve güven",
   noPublicProfile: "Profil görünürlüğü org üyelerine özeldir. Takipçi grafiği yok.",
   billingLead: "Koltuk sayısı değil analiz derinliği (Fast / Deep + Council). Kartlar faturalama açıksa Stripe’ta işlenir.",
