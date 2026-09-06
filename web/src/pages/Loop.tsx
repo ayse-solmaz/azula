@@ -320,11 +320,11 @@ export default function LoopPage() {
         </div>
         <LoopProgress invDone={invDone} genDone={genDone} evalDone={evalDone} />
         <div className="row-actions">
-          <button type="button" className="linkish" onClick={() => nav("/")}>
+          <button type="button" className="nav-btn" onClick={() => nav("/")}>
             {t("backProjects")}
           </button>
           {latestInv && (
-            <button type="button" className="linkish" onClick={() => nav(`/investigation/${latestInv.id}`)}>
+            <button type="button" className="nav-btn primary" onClick={() => nav(`/investigation/${latestInv.id}`)}>
               {invDone ? t("seeResults") : t("seeProgress")}
             </button>
           )}

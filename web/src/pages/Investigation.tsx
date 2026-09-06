@@ -431,7 +431,7 @@ export default function InvestigationPage() {
           {!!inv.filesAccessed?.length && <p className="hint">{t("mcpFiles", { list: inv.filesAccessed.join(", ") })}</p>}
         </details>
         <p>
-          <Link className="linkish" to="/">
+          <Link className="nav-btn" to="/">
             {t("backHome")}
           </Link>
         </p>
