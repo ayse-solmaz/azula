@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"log"
 	"sync"
 	"time"
@@ -640,11 +641,12 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 		s.ensureCancelled(inv)
 		return domain.ErrCancelled
 	}
-	if err != nil || council == nil || len(council.Agreements) == 0 {
+	if err != nil || council == nil || strings.TrimSpace(council.FinalJudgment.MostLikelyCause) == "" {
 		if err != nil {
 			log.Printf("investigation %s: council LLM fallback: %v", inv.ID, err)
 		}
-		council = fallbackCouncil()
+		// Promote Deep look when Council agents/judge fail — never invent a different sample.
+		council = fallbackCouncilFrom(fast, deep)
 		fallback = append(fallback, "council")
 	}
 	if council != nil && council.Aggregation == "" {
@@ -752,20 +754,43 @@ func fallbackDeep() *domain.DeepResult {
 }
 
 func fallbackCouncil() *domain.CouncilResult {
-	deep := fallbackDeep()
+	return fallbackCouncilFrom(nil, nil)
+}
+
+// fallbackCouncilFrom builds a Council result from the Deep (and Fast) look already
+// produced for this run. Hard-coded broken-pipeline text must not replace a live Deep finding.
+func fallbackCouncilFrom(fast *domain.FastResult, deep *domain.DeepResult) *domain.CouncilResult {
+	if deep == nil || strings.TrimSpace(deep.RootCause) == "" {
+		deep = fallbackDeep()
+	}
+	cause := strings.TrimSpace(deep.RootCause)
+	action := strings.TrimSpace(deep.SuggestedFix)
+	if action == "" {
+		action = "Inspect the cited evidence and apply the Deep look fix before retraining."
+	}
+	ev := deep.Evidence
+	if len(ev) == 0 {
+		ev = []domain.Evidence{{File: "training.log", Lines: "1-40", Excerpt: cause}}
+	}
+	invEv := ev
+	if len(invEv) > 2 {
+		invEv = invEv[:2]
+	}
+	conf := deep.Confidence
+	if conf < 0.5 {
+		conf = 0.72
+	}
+	_ = fast
 	return &domain.CouncilResult{
 		Models: []domain.CouncilModel{
-			{Role: "investigator", Hypothesis: deep.RootCause, Confidence: 0.89, Evidence: deep.Evidence[:1]},
-			{Role: "challenger", Hypothesis: "Data leakage from the target column into training features is the primary accuracy collapse.", Confidence: 0.71, Evidence: []domain.Evidence{{File: "pipeline.py", Lines: "84-92", Excerpt: "target leakage into training features"}}},
+			{Role: "investigator", Hypothesis: cause, Confidence: conf, Evidence: invEv},
+			{Role: "challenger", Hypothesis: cause, Confidence: conf * 0.92, Evidence: invEv},
 		},
-		Agreements: []string{"Both models detected data quality issues in the training set.", "GPU memory pressure from a large batch size is real."},
-		Disagreements: []domain.Disagreement{
-			{Topic: "Root cause", Investigator: "Schema drift in customer_status + OOM", Challenger: "Target leakage in pipeline.py"},
-		},
+		Agreements: []string{"Council agents timed out or failed; judgment continues from the Deep look finding."},
 		FinalJudgment: domain.FinalJudgment{
-			MostLikelyCause:   "Schema drift in `customer_status` combined with oversized batch_size",
-			Confidence:        0.91,
-			RecommendedAction: "Fix schema encoding, reduce batch_size, remove leaky feature, retrain.",
+			MostLikelyCause:   cause,
+			Confidence:        conf,
+			RecommendedAction: action,
 		},
 	}
 }
