@@ -102,16 +102,75 @@ a.primary:hover,
   color: #ffffff;
 }
 
-button.ghost { background: transparent; }
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--frost);
+  color: #ffffff;
+}
+button.ghost:hover:not(:disabled) {
+  border-color: rgba(232, 238, 252, 0.35);
+  background: var(--surface-2);
+}
+button.secondary, a.secondary {
+  background: var(--surface-2);
+  color: #ffffff;
+  border: 1px solid var(--frost);
+  font-weight: 600;
+}
+a.secondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 10px;
+}
+button.secondary:hover:not(:disabled), a.secondary:hover {
+  border-color: rgba(232, 238, 252, 0.35);
+  background: var(--navy);
+}
+/* Inline text actions (file names, compare) — keep compact but still look clickable */
 button.linkish, a.linkish {
   border: none;
   background: none;
-  padding: 0;
+  padding: 2px 4px;
+  color: var(--ice);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 600;
+}
+button.linkish:hover:not(:disabled), a.linkish:hover {
+  background: rgba(232, 238, 252, 0.08);
+  border-radius: 6px;
+  color: #ffffff;
+}
+/* Primary page navigation — never look like body copy */
+button.nav-btn, a.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--frost);
+  background: var(--surface-2);
+  color: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+  line-height: 1.2;
+  cursor: pointer;
+}
+button.nav-btn:hover:not(:disabled), a.nav-btn:hover {
+  border-color: rgba(232, 238, 252, 0.4);
+  background: var(--navy);
   color: #ffffff;
   text-decoration: none;
-  font-weight: 500;
 }
-button.linkish:hover:not(:disabled), a.linkish:hover { background: none; text-decoration: underline; }
+button.nav-btn.primary, a.nav-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+button.nav-btn.primary:hover:not(:disabled), a.nav-btn.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
 button.danger {
   background: var(--danger-bg);
   border-color: rgba(239, 107, 98, 0.45);
@@ -203,15 +262,23 @@ label {
   flex-wrap: wrap;
 }
 .topbar nav a {
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.875rem;
+  border: 1px solid transparent;
 }
-.topbar nav a.active, .topbar nav a:hover {
+.topbar nav a:hover {
   color: var(--text);
   background: var(--surface-2);
+  border-color: rgba(232, 238, 252, 0.16);
+}
+.topbar nav a.active {
+  color: #ffffff;
+  background: var(--surface-2);
+  border-color: rgba(232, 238, 252, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(232, 238, 252, 0.08);
 }
 
 .top-meta {
@@ -234,9 +301,15 @@ label {
 .quiet-link {
   font-size: 0.8125rem;
   color: var(--muted);
-  padding: 6px 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
 }
-.quiet-link:hover, .quiet-link.active { color: var(--ice); }
+.quiet-link:hover, .quiet-link.active {
+  color: var(--ice);
+  background: var(--surface-2);
+  border-color: rgba(232, 238, 252, 0.14);
+}
 
 .think-used {
   margin: 10px 0 0;

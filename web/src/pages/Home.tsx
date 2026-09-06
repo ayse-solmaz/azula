@@ -372,7 +372,7 @@ export default function HomePage() {
             <ul className="history">
               {runs.map((inv) => (
                 <li key={inv.id}>
-                  <button className="linkish" type="button" onClick={() => nav(`/investigation/${inv.id}`)}>
+                  <button className="nav-btn" type="button" onClick={() => nav(`/investigation/${inv.id}`)}>
                     {prettyStatus(inv.status, t)} · {formatWhen(inv.createdAt, locale)}
                   </button>
                 </li>
