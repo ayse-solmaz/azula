@@ -71,12 +71,17 @@ func (r *Router) routeCouncil(cfg domain.ModelConfig, available []string) Counci
 	if hit := PickModelB(available, invName); hit != "" {
 		invName = hit
 	}
-	chalName := cfg.ModelAName
-	chalSlot := "A"
-	// Fast council (default): keep Challenger on the small Fast model so a
-	// single Ollama GPU does not load a 7B+ diverse model next to Investigator.
+	// Fast council (default): Challenger stays on the small env Fast model
+	// (r.cfg.ModelAName), even if the workspace Models page set Model A to
+	// azula-incident — otherwise both agents share one GPU family and time out.
 	// Set AZULA_COUNCIL_FAST=false to restore family-diversity routing.
+	chalName := r.cfg.ModelAName
+	if chalName == "" {
+		chalName = "qwen2.5:1.5b"
+	}
+	chalSlot := "A"
 	if !r.cfg.CouncilFast {
+		chalName = cfg.ModelAName
 		if diverse := PickDiverse(available, invName); diverse != "" {
 			chalName = diverse
 			chalSlot = "B"
@@ -84,6 +89,8 @@ func (r *Router) routeCouncil(cfg domain.ModelConfig, available []string) Counci
 			chalName = cfg.ModelAName
 			chalSlot = "A"
 		}
+	} else if hit := findOllamaModel(available, chalName); hit != "" {
+		chalName = hit
 	}
 	judgeSlot := "A"
 	judgeName := cfg.ModelAName

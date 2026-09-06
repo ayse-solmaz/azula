@@ -47,6 +47,19 @@ func (r *Router) Classify(ctx context.Context, cfg domain.ModelConfig, invCtx do
 }
 
 func (r *Router) Analyze(ctx context.Context, cfg domain.ModelConfig, invCtx domain.InvestigationContext) (*domain.DeepResult, error) {
+	// Hard cap so a stuck Ollama Deep (azula-incident) cannot sit for tens of minutes.
+	deepTO := r.cfg.RequestTimeout
+	if deepTO <= 0 || deepTO > 2*time.Minute {
+		deepTO = 90 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, deepTO)
+	defer cancel()
+
+	deepCfg := cfg
+	if deepCfg.MaxTokens <= 0 || deepCfg.MaxTokens > 800 {
+		deepCfg.MaxTokens = 800
+	}
+
 	user := analyzeUser(invCtx.Prompt, PackFiles(invCtx.FileContents))
 	var dto struct {
 		RootCause    string            `json:"rootCause"`
@@ -54,7 +67,7 @@ func (r *Router) Analyze(ctx context.Context, cfg domain.ModelConfig, invCtx dom
 		Evidence     []domain.Evidence `json:"evidence"`
 		SuggestedFix string            `json:"suggestedFix"`
 	}
-	if err := r.completeParsed(ctx, cfg, "B", "", SysDeep, user, &dto); err != nil {
+	if err := r.completeParsed(ctx, deepCfg, "B", "", SysDeep, user, &dto); err != nil {
 		return nil, err
 	}
 	return &domain.DeepResult{RootCause: dto.RootCause, Confidence: clamp01(dto.Confidence), Evidence: dto.Evidence, SuggestedFix: dto.SuggestedFix}, nil

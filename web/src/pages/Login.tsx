@@ -152,7 +152,7 @@ export default function LoginPage() {
           )}
           {newDevice && (
             <p className="muted">
-              {ephemeral ? t("deviceOtpDemo", { code: ephemeral }) : t("deviceOtpHint")}
+              {t("deviceOtpHint")}
             </p>
           )}
           {mode === "register" && (
