@@ -1,7 +1,18 @@
 package llm
 
+import (
+	"fmt"
+	"strings"
+
+	"github.com/ayse-solmaz/azula/internal/domain"
+)
+
 // Prompt templates used by Fast / Deep / Council. Exact strings and token
 // budgets are documented in docs/PROMPTING.md.
+
+// CouncilBudgetChars is the Challenger file-pack budget. Investigator does not
+// re-read the full Deep dump — it gets prior analysis plus cited snippets.
+const CouncilBudgetChars = 8000
 
 const jsonOnly = "Reply with a single JSON object only. No markdown, no commentary."
 
@@ -58,6 +69,79 @@ func analyzeUser(prompt, files string) string {
 
 func councilHypUser(prompt, files, schema string) string {
 	return "User question: " + prompt + "\n\nFiles:\n" + files + "\nName one primary cause. Cite file:line evidence.\n" + schema
+}
+
+func priorAnalysisBrief(fast *domain.FastResult, deep *domain.DeepResult) string {
+	var b strings.Builder
+	b.WriteString("Prior analysis (already completed — do not re-read the full project):\n")
+	if fast != nil {
+		b.WriteString(fmt.Sprintf("Fast: incidentType=%s confidence=%.2f summary=%s\n",
+			fast.IncidentType, fast.Confidence, clipRunes(fast.Summary, 280)))
+	}
+	if deep != nil {
+		b.WriteString(fmt.Sprintf("Deep: rootCause=%s confidence=%.2f fix=%s\n",
+			clipRunes(deep.RootCause, 400), deep.Confidence, clipRunes(deep.SuggestedFix, 280)))
+		if len(deep.Evidence) > 0 {
+			b.WriteString("Deep evidence:\n")
+			for i, e := range deep.Evidence {
+				if i >= 6 {
+					break
+				}
+				b.WriteString(fmt.Sprintf("- %s L%s: %s\n", e.File, e.Lines, clipRunes(e.Excerpt, 180)))
+			}
+		}
+	}
+	return b.String()
+}
+
+func citedFileSnippets(files map[string]string, deep *domain.DeepResult, budget int) string {
+	if budget <= 0 {
+		budget = 2500
+	}
+	if deep == nil || len(deep.Evidence) == 0 || len(files) == 0 {
+		return ""
+	}
+	picked := map[string]string{}
+	for _, e := range deep.Evidence {
+		if e.File == "" {
+			continue
+		}
+		if _, ok := picked[e.File]; ok {
+			continue
+		}
+		body, ok := files[e.File]
+		if !ok {
+			continue
+		}
+		picked[e.File] = body
+	}
+	if len(picked) == 0 {
+		return ""
+	}
+	return PackFilesBudget(picked, budget)
+}
+
+func investigatorUser(prompt string, fast *domain.FastResult, deep *domain.DeepResult, files map[string]string) string {
+	var b strings.Builder
+	b.WriteString("User question: ")
+	b.WriteString(prompt)
+	b.WriteString("\n\n")
+	b.WriteString(priorAnalysisBrief(fast, deep))
+	if snippets := citedFileSnippets(files, deep, 2500); snippets != "" {
+		b.WriteString("\nCited file snippets only (not a full re-read):\n")
+		b.WriteString(snippets)
+		b.WriteString("\n")
+	}
+	b.WriteString("Refine and defend one primary root-cause hypothesis from the prior analysis. Cite file:line evidence. Do not invent files or blend unrelated bugs.\n")
+	b.WriteString(investigatorSchema())
+	return b.String()
+}
+
+func challengerUser(prompt, files string, fast *domain.FastResult, deep *domain.DeepResult) string {
+	return "User question: " + prompt +
+		"\n\n" + priorAnalysisBrief(fast, deep) +
+		"\nStress-test the Deep / Investigator hypothesis. If the files show several independent failures, propose a different primary. If one data-quality failure dominates and OOM/leak/schema are absent, do not invent those.\n\nCompact files:\n" +
+		files + "\n" + challengerSchema()
 }
 
 func investigatorSchema() string {

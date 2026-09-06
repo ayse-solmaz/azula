@@ -188,9 +188,10 @@ function invStatus(inv: Pick<Investigation, "status">) {
 /** Derive Council screen state from Investigation fields — no parallel API enum. */
 export function councilViewState(inv: Pick<Investigation, "status" | "councilResult" | "executionMode">): CouncilViewState {
   if (execMode(inv) === "fallback") return "fallback";
-  if (inv.councilResult) return "complete";
+  if (inv.councilResult?.finalJudgment?.mostLikelyCause) return "complete";
   const st = invStatus(inv);
   if (["pending", "fast_classify", "deep_analyze", "council"].includes(st)) return "pending";
+  if (inv.councilResult) return "complete";
   return "idle";
 }
 

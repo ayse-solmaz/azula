@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestValidateProductionJWT(t *testing.T) {
@@ -13,6 +14,30 @@ func TestValidateProductionJWT(t *testing.T) {
 	c.JWTSecret = "not-the-default-secret-value"
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCouncilFastDefaults(t *testing.T) {
+	t.Setenv("AZULA_COUNCIL_FAST", "")
+	t.Setenv("AZULA_COUNCIL_CONTEXT_CHARS", "")
+	t.Setenv("AZULA_COUNCIL_AGENT_TIMEOUT", "")
+	t.Setenv("AZULA_COUNCIL_MAX_TOKENS", "")
+	c := Load()
+	if !c.CouncilFast {
+		t.Fatal("council fast should default on")
+	}
+	if c.CouncilContextChars != 8000 {
+		t.Fatalf("context chars=%d", c.CouncilContextChars)
+	}
+	if c.CouncilAgentTimeout != 25*time.Second {
+		t.Fatalf("agent timeout=%s", c.CouncilAgentTimeout)
+	}
+	if c.CouncilMaxTokens != 512 {
+		t.Fatalf("max tokens=%d", c.CouncilMaxTokens)
+	}
+	t.Setenv("AZULA_COUNCIL_FAST", "false")
+	if Load().CouncilFast {
+		t.Fatal("explicit false must disable fast council")
 	}
 }
 

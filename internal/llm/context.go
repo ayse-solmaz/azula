@@ -6,7 +6,8 @@ import (
 	"unicode/utf8"
 )
 
-// PromptBudgetChars is the Deep/Council user-payload budget (~6k tokens at 4 chars/token).
+// PromptBudgetChars is the Deep user-payload budget (~6k tokens at 4 chars/token).
+// Council Challenger uses CouncilBudgetChars (see prompts.go).
 const PromptBudgetChars = 24000
 
 const perFileChars = 8000

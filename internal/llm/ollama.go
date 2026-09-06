@@ -10,8 +10,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+type ollamaTagsCache struct {
+	mu    sync.Mutex
+	names []string
+	at    time.Time
+	url   string
+}
+
+var tagsCache ollamaTagsCache
+
+const tagsCacheTTL = 10 * time.Second
 
 type OllamaProvider struct {
 	baseURL    string
@@ -99,7 +111,16 @@ type ollamaTags struct {
 }
 
 func ListOllamaModels(ctx context.Context, baseURL string) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/api/tags", nil)
+	baseURL = strings.TrimRight(baseURL, "/")
+	tagsCache.mu.Lock()
+	if tagsCache.url == baseURL && time.Since(tagsCache.at) < tagsCacheTTL && tagsCache.names != nil {
+		out := append([]string{}, tagsCache.names...)
+		tagsCache.mu.Unlock()
+		return out, nil
+	}
+	tagsCache.mu.Unlock()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/tags", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +141,11 @@ func ListOllamaModels(ctx context.Context, baseURL string) ([]string, error) {
 	for _, m := range tags.Models {
 		names = append(names, m.Name)
 	}
+	tagsCache.mu.Lock()
+	tagsCache.url = baseURL
+	tagsCache.names = append([]string{}, names...)
+	tagsCache.at = time.Now()
+	tagsCache.mu.Unlock()
 	return names, nil
 }
 

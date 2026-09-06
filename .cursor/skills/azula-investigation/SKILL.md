@@ -72,8 +72,9 @@ MCP reads **selected** files during this step (token budget — do not dump ever
 // Transition: deep_analyze → council
 const councilResult = await modelRouter.runCouncil(context);
 
-// Investigator and Challenger run in parallel
-// Judge waits for both, then synthesizes
+// Investigator and Challenger run in parallel (Investigator reuses Deep + cited snippets)
+// Challenger gets a compact file pack; Judge waits for both, then synthesizes
+// Partial models are persisted so the UI can update before Judge returns
 ```
 
 **Expected output schema:**

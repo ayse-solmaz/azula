@@ -367,9 +367,10 @@ const en = {
   noFastSummary: "No Fast summary was stored.",
   councilAssembling: "Council assembling",
   councilWait:
-    "Investigator and Challenger run in parallel on selected files. Placeholders below are loading state — not a fake debate.",
+    "Investigator and Challenger run in parallel. Hypotheses appear as each model finishes — Judge waits for both.",
   modelBThinking: "Investigator is thinking…",
   modelAThinking: "Challenger is thinking…",
+  judgeWaiting: "Judge is synthesizing agreements and the final vote…",
   councilFailed: "Council failed to complete",
   councilDidNotFinish: "The Council stage did not finish.",
   invColumn: "Investigation",
@@ -887,9 +888,10 @@ const tr: { [K in keyof typeof en]: string } = {
   noFastSummary: "Fast özeti kaydedilmedi.",
   councilAssembling: "Council toplanıyor",
   councilWait:
-    "Investigator ve Challenger seçili dosyalarda paralel çalışır. Aşağıdakiler yükleme durumu — sahte tartışma değil.",
+    "Investigator ve Challenger paralel çalışır. Hipotezler her model bitince görünür — Judge ikisini bekler.",
   modelBThinking: "İnceleyici düşünüyor…",
   modelAThinking: "Karşı görüş düşünüyor…",
+  judgeWaiting: "Judge anlaşmaları ve nihai oyu birleştiriyor…",
   councilFailed: "Council tamamlanamadı",
   councilDidNotFinish: "Council aşaması bitmedi.",
   invColumn: "Soruşturma",

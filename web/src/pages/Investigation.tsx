@@ -78,11 +78,13 @@ function CouncilBoard({
   inv,
   onOpenFile,
   fileName,
+  assembling,
 }: {
   council: CouncilResult;
   inv: Investigation;
   onOpenFile: (file: string) => void;
   fileName: string;
+  assembling?: boolean;
 }) {
   const { t } = useI18n();
   const investigator = council.models.find((m) => m.role === "investigator") || council.models[0];
@@ -144,6 +146,13 @@ function CouncilBoard({
             <Conf value={investigator.confidence} />
             <EvidenceList items={investigator.evidence} onOpen={onOpenFile} active={fileName} />
           </div>
+        ) : assembling ? (
+          <div className="debate-card">
+            <span className="badge accent">{t("roleInvestigator")}</span>
+            <p className="hint">{t("modelBThinking")}</p>
+            <div className="skel" />
+            <div className="skel" />
+          </div>
         ) : null}
         <div className="debate-vs" aria-hidden>
           VS
@@ -160,48 +169,61 @@ function CouncilBoard({
             <Conf value={challenger.confidence} />
             <EvidenceList items={challenger.evidence} onOpen={onOpenFile} active={fileName} />
           </div>
+        ) : assembling ? (
+          <div className="debate-card">
+            <span className="badge accent">{t("roleChallenger")}</span>
+            <p className="hint">{t("modelAThinking")}</p>
+            <div className="skel" />
+            <div className="skel" />
+          </div>
         ) : null}
       </div>
 
-      <h3>{t("whereAgree")}</h3>
-      {council.agreements.length ? (
-        <ul className="files">
-          {council.agreements.map((a, i) => (
-            <li key={i}>{a}</li>
-          ))}
-        </ul>
+      {assembling && !council.finalJudgment?.mostLikelyCause ? (
+        <p className="council-note">{t("judgeWaiting")}</p>
       ) : (
-        <p className="hint">{t("noShared")}</p>
-      )}
+        <>
+          <h3>{t("whereAgree")}</h3>
+          {council.agreements.length ? (
+            <ul className="files">
+              {council.agreements.map((a, i) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="hint">{t("noShared")}</p>
+          )}
 
-      <h3>{t("whereSplit")}</h3>
-      {council.disagreements.length ? (
-        <ul className="split-list">
-          {council.disagreements.map((d, i) => (
-            <li key={i}>
-              <span className="topic">{d.topic || t("rootCause")}</span>
-              <p className="side">
-                <span>{t("roleInvestigator")}</span>
-                {d.investigator}
-              </p>
-              <p className="side">
-                <span>{t("roleChallenger")}</span>
-                {d.challenger}
-              </p>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="hint">{t("noSplit")}</p>
-      )}
+          <h3>{t("whereSplit")}</h3>
+          {council.disagreements.length ? (
+            <ul className="split-list">
+              {council.disagreements.map((d, i) => (
+                <li key={i}>
+                  <span className="topic">{d.topic || t("rootCause")}</span>
+                  <p className="side">
+                    <span>{t("roleInvestigator")}</span>
+                    {d.investigator}
+                  </p>
+                  <p className="side">
+                    <span>{t("roleChallenger")}</span>
+                    {d.challenger}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="hint">{t("noSplit")}</p>
+          )}
 
-      <div className="verdict">
-        <h3>{t("finalJudgment")}</h3>
-        <p className="verdict-cause">{council.finalJudgment.mostLikelyCause}</p>
-        <Conf value={council.finalJudgment.confidence} />
-        <p>{council.finalJudgment.recommendedAction}</p>
-        {council.needsReview ? <p className="hint">{t("needsReviewHint")}</p> : null}
-      </div>
+          <div className="verdict">
+            <h3>{t("finalJudgment")}</h3>
+            <p className="verdict-cause">{council.finalJudgment.mostLikelyCause}</p>
+            <Conf value={council.finalJudgment.confidence} />
+            <p>{council.finalJudgment.recommendedAction}</p>
+            {council.needsReview ? <p className="hint">{t("needsReviewHint")}</p> : null}
+          </div>
+        </>
+      )}
 
       <details className="how-vote">
         <summary>{t("howVote")}</summary>
@@ -240,7 +262,8 @@ export default function InvestigationPage() {
         if (!stop) setInv(data.investigation);
         const st = data.investigation.status;
         if (st !== "COMPLETED" && st !== "FAILED") {
-          setTimeout(tick, 1200);
+          const delay = st === "COUNCIL" || st === "DEEP_ANALYZE" ? 600 : 1200;
+          setTimeout(tick, delay);
         }
       } catch (e) {
         if (!stop) setError(e instanceof Error ? e.message : t("failed"));
@@ -285,6 +308,8 @@ export default function InvestigationPage() {
   const running = !["COMPLETED", "FAILED"].includes(inv.status);
   const view = councilViewState(inv);
   const debate = showCouncilDebate(inv);
+  const judged = Boolean(inv.councilResult?.finalJudgment?.mostLikelyCause);
+  const hasCouncilModels = (inv.councilResult?.models?.length ?? 0) > 0;
   const councilFailed = inv.status === "FAILED" && !inv.councilResult;
   const skipped = deepSkipped(inv);
   const fastPct = Math.round((inv.fastResult?.confidence ?? 0) * 100);
@@ -420,7 +445,13 @@ export default function InvestigationPage() {
           </article>
         ) : null}
         {debate && inv.councilResult ? (
-          <CouncilBoard council={inv.councilResult} inv={inv} onOpenFile={openFile} fileName={fileName} />
+          <CouncilBoard
+            council={inv.councilResult}
+            inv={inv}
+            onOpenFile={openFile}
+            fileName={fileName}
+            assembling={running && !judged}
+          />
         ) : null}
         {view === "fallback" && (
           <article className="panel council-hero">
@@ -445,7 +476,7 @@ export default function InvestigationPage() {
             )}
           </article>
         )}
-        {view === "pending" && (inv.status === "COUNCIL" || inv.status === "DEEP_ANALYZE") && (
+        {view === "pending" && !hasCouncilModels && (inv.status === "COUNCIL" || inv.status === "DEEP_ANALYZE") && (
           <article className="panel council-hero">
             <h2>{t("councilAssembling")}</h2>
             <p className="council-note">{t("councilWait")}</p>

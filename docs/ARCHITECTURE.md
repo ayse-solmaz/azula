@@ -122,7 +122,9 @@ InvestigationService
                  Go weighted vote + echo-chamber detector
 ```
 
-**Parallelism:** Investigator and Challenger run in parallel. Judge waits for both. Aggregation is **not** “they said the same thing so it is true”: same-family agreement is flagged `echo_chamber`.
+**Parallelism:** Investigator and Challenger run in parallel. Judge waits for both. Investigator does **not** re-ingest the Deep file dump — it defends the Deep result with cited snippets. Challenger gets a tighter (~8k) file pack. Partial models are persisted so the UI can update before Judge returns. Aggregation is **not** “they said the same thing so it is true”: same-family agreement is flagged `echo_chamber`.
+
+Demo default `AZULA_COUNCIL_FAST=true` keeps Challenger on the small Fast model (avoids loading a second large Ollama model on one GPU). Set `false` to pick a diverse family when installed.
 
 See [PROMPTING.md](PROMPTING.md) for templates and budgets.
 

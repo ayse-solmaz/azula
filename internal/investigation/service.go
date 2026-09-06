@@ -529,7 +529,14 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 		return err
 	}
 
-	council, err := s.router.RunCouncil(ctx, mcfg, invCtx, fast, deep)
+	council, err := s.router.RunCouncilProgress(ctx, mcfg, invCtx, fast, deep, func(partial *domain.CouncilResult) {
+		if partial == nil {
+			return
+		}
+		inv.CouncilResult = partial
+		inv.UpdatedAt = time.Now().UTC()
+		_ = s.invs.Update(ctx, inv)
+	})
 	if err != nil || council == nil || len(council.Agreements) == 0 {
 		if err != nil {
 			log.Printf("investigation %s: council LLM fallback: %v", inv.ID, err)
