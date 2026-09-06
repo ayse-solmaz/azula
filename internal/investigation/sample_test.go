@@ -72,6 +72,61 @@ func TestBrokenPipelineGoldKeywords(t *testing.T) {
 	}
 }
 
+func TestNanImputeGoldKeywords(t *testing.T) {
+	cases, err := eval.LoadCases(filepath.Join(repoRoot(t), "samples"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gold eval.Case
+	for _, c := range cases {
+		if c.ID == "broken-nan-impute" {
+			gold = c
+		}
+	}
+	if gold.ID == "" {
+		t.Fatal("samples/broken-nan-impute/expected.json not loaded")
+	}
+	if gold.IncidentType != "data_quality" {
+		t.Fatalf("incidentType=%s", gold.IncidentType)
+	}
+	cause := "dropna on monthly_spend NaNs drops MNAR churners, flips class balance, and collapses val AUC to chance"
+	action := "Replace dropna with median impute (or a missingness indicator) on monthly_spend; do not drop the positive class"
+	if eval.KeywordRecall(cause, gold) < 1 {
+		t.Fatalf("nan-impute judgment should hit all cause keywords, recall=%f", eval.KeywordRecall(cause, gold))
+	}
+	if eval.CouncilScore(gold.IncidentType, cause, action, gold) < eval.FastScore("unknown", "job failed", gold) {
+		t.Fatal("nan-impute council text should beat a weak fast baseline")
+	}
+}
+
+func TestNanImputeFilesRankAndPack(t *testing.T) {
+	root := filepath.Join(repoRoot(t), "samples", "broken-nan-impute")
+	names := []string{"training.log", "config.yaml", "pipeline.py", "dataset.jsonl"}
+	contents := map[string]string{}
+	for _, n := range names {
+		raw, err := os.ReadFile(filepath.Join(root, n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		contents[n] = string(raw)
+	}
+	ranked := rankNames(names, "Why did training fail?", "data_quality")
+	if ranked[0] != "training.log" && ranked[0] != "pipeline.py" && ranked[0] != "dataset.jsonl" {
+		t.Fatalf("expected a primary evidence file first, got %v", ranked)
+	}
+	packed := llm.PackFiles(contents)
+	for _, needle := range []string{"dropna", "monthly_spend", "val_auc"} {
+		if !strings.Contains(packed, needle) {
+			t.Fatalf("packed prompt missing %q", needle)
+		}
+	}
+	for _, leak := range []string{"target_leak", "CUDA out of memory", "customer_status"} {
+		if strings.Contains(packed, leak) {
+			t.Fatalf("nan-impute sample must not contain composite-demo signal %q", leak)
+		}
+	}
+}
+
 func TestBrokenPipelineCouncilAggregation(t *testing.T) {
 	res := &domain.CouncilResult{
 		Models: []domain.CouncilModel{

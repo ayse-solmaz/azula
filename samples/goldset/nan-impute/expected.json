@@ -1,0 +1,8 @@
+{
+  "id": "nan-impute",
+  "incidentType": "data_quality",
+  "causeKeywords": ["dropna", "monthly_spend", "nan", "balance", "auc"],
+  "fixKeywords": ["impute", "median"],
+  "aggregation": "consensus",
+  "needsReview": false
+}

@@ -21,13 +21,13 @@ Two model slots are not “twice as true.” Azula measures agreement **in code*
 - **Same family, same wording** (Qwen Fast vs Qwen QLoRA restating OOM) → `echo_chamber`, review flag. That is *not* 95% independent certainty.
 - **Different causes** (OOM vs memory leak / schema vs target leak) → `disagreement`, confidence down, `needsReview`.
 
-We score this with **type-match + keyword recall** on `samples/goldset/` (three hold-out incidents) and on the composite demo `samples/broken-pipeline/expected.json`. That is recall of gold phrases, **not** a public F1 leaderboard.
+We score this with **type-match + keyword recall** on `samples/goldset/` (four hold-out incidents) and on the composite demo `samples/broken-pipeline/expected.json`. That is recall of gold phrases, **not** a public F1 leaderboard.
 
 ## 6 Sep demo dataset
 
 The jury walkthrough is **`samples/broken-pipeline/`** (onboarding sample: schema drift + GPU OOM + target leak in one project). It is synthetic, in-repo, and seeded when you create the sample workspace — not a customer log dump.
 
-`samples/goldset/` (gpu-oom, schema-drift, target-leak) is the **hold-out scoring set**, split so each incident is primary. Do not train QLoRA on those folders.
+`samples/goldset/` (gpu-oom, schema-drift, target-leak, nan-impute) is the **hold-out scoring set**, split so each incident is primary. Do not train QLoRA on those folders. Upload `samples/broken-nan-impute/` as its own project when you want a single-cause dropna / class-balance case.
 
 Live customer logs are out of scope for the deadline unless you upload them in the UI after the sample run.
 
@@ -76,6 +76,8 @@ Live Ollama (`qwen2.5:1.5b` + optional `azula-incident` / `mistral`) makes the r
 ## Sample Pipeline
 
 Onboarding demo files: [`samples/broken-pipeline/`](samples/broken-pipeline/)
+
+Single-cause missing-value case (upload in the UI): [`samples/broken-nan-impute/`](samples/broken-nan-impute/)
 
 ## Tech Stack (Delivery — deadline 6 Sep 2026)
 

@@ -61,6 +61,7 @@ TOP ROOT CAUSES
 **Predefined categories:**
 - `schema_mismatch`
 - `data_drift`
+- `data_quality`
 - `memory_gpu`
 - `dependency_failure`
 - `configuration_error`

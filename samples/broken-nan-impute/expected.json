@@ -1,0 +1,13 @@
+{
+  "id": "broken-nan-impute",
+  "incidentType": "data_quality",
+  "causeKeywords": ["dropna", "monthly_spend", "nan", "balance", "auc"],
+  "fixKeywords": ["impute", "median"],
+  "aggregation": "consensus",
+  "needsReview": false,
+  "finalJudgment": {
+    "mostLikelyCause": "dropna on monthly_spend NaNs drops MNAR churners, flips class balance, and collapses val AUC to chance",
+    "confidence": 0.91,
+    "recommendedAction": "Replace dropna with median impute (or a missingness indicator) on monthly_spend; do not drop the positive class"
+  }
+}

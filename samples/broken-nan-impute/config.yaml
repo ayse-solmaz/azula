@@ -1,0 +1,23 @@
+model:
+  name: churn_v3
+  batch_size: 32
+  learning_rate: 0.001
+  epochs: 8
+  optimizer: adam
+
+data:
+  train_path: dataset.jsonl
+  val_split: 0.2
+  features:
+    - monthly_spend
+    - tenure_months
+    - support_tickets
+  # Intended cleaning: keep every row and fill monthly_spend.
+  # pipeline.py ignores this and calls dropna instead.
+  missing:
+    monthly_spend: median
+
+training:
+  device: cpu
+  metric: val_auc
+  checkpoint_dir: checkpoints/

@@ -1,0 +1,5 @@
+model:
+  batch_size: 32
+data:
+  missing:
+    monthly_spend: median

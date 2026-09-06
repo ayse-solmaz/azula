@@ -20,8 +20,8 @@ func TestGoldSetCouncilBeatsFast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) < 3 {
-		t.Fatalf("need at least 3 gold incidents, got %d", len(cases))
+	if len(cases) < 4 {
+		t.Fatalf("need at least 4 gold incidents, got %d", len(cases))
 	}
 
 	// These maps are fixtures: this test does not call a model.
@@ -30,6 +30,7 @@ func TestGoldSetCouncilBeatsFast(t *testing.T) {
 		"schema-drift": {"unknown", "Training looks unstable."},
 		"gpu-oom":      {"unknown", "Job stopped early."},
 		"target-leak":  {"config_error", "Check hyperparameters."},
+		"nan-impute":   {"unknown", "Validation metric dropped."},
 	}
 	// Council judgment that actually names the gold cause.
 	council := map[string]struct{ cause, action string }{
@@ -44,6 +45,10 @@ func TestGoldSetCouncilBeatsFast(t *testing.T) {
 		"target-leak": {
 			"Target leakage: label copied into features as target_leak",
 			"Remove the leaky column and retrain",
+		},
+		"nan-impute": {
+			"dropna on monthly_spend NaNs flips class balance and collapses val AUC",
+			"Median-impute monthly_spend instead of dropping rows",
 		},
 	}
 
@@ -68,7 +73,7 @@ func TestGoldSetCouncilBeatsFast(t *testing.T) {
 	if councilWins <= fastWins {
 		t.Fatalf("council should beat fast on gold set (council %d vs fast %d)", councilWins, fastWins)
 	}
-	if gotAgg["schema-drift"] != "consensus" || gotAgg["gpu-oom"] != "echo_chamber" || gotAgg["target-leak"] != "disagreement" {
+	if gotAgg["schema-drift"] != "consensus" || gotAgg["gpu-oom"] != "echo_chamber" || gotAgg["target-leak"] != "disagreement" || gotAgg["nan-impute"] != "consensus" {
 		t.Fatalf("gold aggregation fixtures: %+v", gotAgg)
 	}
 }

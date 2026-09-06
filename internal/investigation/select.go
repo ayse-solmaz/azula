@@ -74,6 +74,10 @@ func fileScore(name, hint, incidentType string) int {
 		if strings.Contains(n, "config") {
 			score += 24
 		}
+	case "data_quality":
+		if strings.Contains(n, "dataset") || strings.HasSuffix(n, ".jsonl") || strings.HasSuffix(n, ".py") || strings.Contains(n, "log") {
+			score += 24
+		}
 	}
 	base := n
 	if i := strings.LastIndex(base, "."); i >= 0 {

@@ -1,0 +1,18 @@
+2026-09-05 09:14:02 INFO  Starting training run: churn_v3
+2026-09-05 09:14:03 INFO  Loading dataset from dataset.jsonl
+2026-09-05 09:14:03 INFO  Loaded 12,400 rows, 4 columns
+2026-09-05 09:14:04 WARNING Column 'monthly_spend' has 3,108 NaN values (25.1%)
+2026-09-05 09:14:04 INFO  Missingness vs label: NaN rows are 91% positive (churn); complete rows are 26% positive
+2026-09-05 09:14:05 INFO  clean_features: dropna(subset=['monthly_spend']) dropped 3108 rows
+2026-09-05 09:14:05 INFO  Class balance before dropna: pos=0.42 neg=0.58
+2026-09-05 09:14:05 INFO  Class balance after dropna: pos=0.08 neg=0.92
+2026-09-05 09:14:06 WARNING Positive class almost absent after row drop — val split will be ~chance
+2026-09-05 09:14:06 INFO  Feature columns: monthly_spend, tenure_months, support_tickets
+2026-09-05 09:14:07 INFO  Model initialized on cpu (batch_size=32)
+2026-09-05 09:14:18 INFO  Epoch 1/8 — train_auc: 0.81 — val_auc: 0.71
+2026-09-05 09:14:31 INFO  Epoch 2/8 — train_auc: 0.88 — val_auc: 0.58
+2026-09-05 09:14:44 INFO  Epoch 3/8 — train_auc: 0.93 — val_auc: 0.51
+2026-09-05 09:14:57 INFO  Epoch 4/8 — train_auc: 0.96 — val_auc: 0.49 (↓ from 0.71)
+2026-09-05 09:14:58 WARNING Validation AUC collapsed after dropna — remaining val positives: 19 / 1858
+2026-09-05 09:14:59 INFO  Early stop. Checkpoint saved: checkpoints/epoch_3.pt
+2026-09-05 09:14:59 ERROR Training metric failed: val_auc 0.49 is not above chance (0.50)

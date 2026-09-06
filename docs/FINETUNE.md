@@ -100,7 +100,7 @@ JSONL with instruction-style rows from Azula incident domain:
 
 - `data/finetune/incident_pairs.jsonl` — instruction/input/output rows derived from the sample broken pipeline (OOM, schema drift, target leak, config). This is the **training** set.
 - `samples/broken-pipeline/` — the live demo files those pairs were written from (not dumped raw into the trainer).
-- `samples/goldset/` — **hold-out** incidents (`gpu-oom`, `schema-drift`, `target-leak`) with `expected.json`. Do not train on these folders.
+- `samples/goldset/` — **hold-out** incidents (`gpu-oom`, `schema-drift`, `target-leak`, `nan-impute`) with `expected.json`. Do not train on these folders.
 
 **Evaluation (before/after a merge):**
 
