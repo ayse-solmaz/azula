@@ -121,7 +121,7 @@ func main() {
 	srv.Use(extension.AutomaticPersistedQuery{Cache: lru.New[string](100)})
 
 	mux := http.NewServeMux()
-	gql := httpx.RateLimit(120, httpx.AuthOpLimit(20, httpx.RestoreGraphQLCamelCase(auth.Middleware(cfg.JWTSecret, srv))))
+	gql := httpx.RateLimit(2000, httpx.AuthOpLimit(60, httpx.RestoreGraphQLCamelCase(auth.Middleware(cfg.JWTSecret, srv))))
 	mux.Handle("/graphql", gql)
 	if cfg.GraphQLPlayground {
 		mux.Handle("/", playground.Handler("Azula GraphQL", "/graphql"))
