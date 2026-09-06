@@ -26,6 +26,8 @@ export function graphqlUrl() {
   const d = desktop();
   const raw = d?.graphqlUrl;
   const fromDesktop = typeof raw === "function" ? raw() : raw;
+  // Browser: relative /graphql (Vite proxy → :8080). Desktop preload: absolute
+  // http://127.0.0.1:8080/graphql on both Vite origin and file:// bundles.
   const url = fromDesktop || "/graphql";
   return url.replace("://localhost", "://127.0.0.1");
 }

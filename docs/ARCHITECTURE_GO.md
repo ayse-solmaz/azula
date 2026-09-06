@@ -126,8 +126,8 @@ Do **not** spend >4h integrating full masterfabric monolith — time budget does
 ## Electron
 
 ```
-electron/main.js → load WEB_URL (dev: http://localhost:3001)
+electron/main.js → ELECTRON_WEB_URL / WEB_URL, else live http://127.0.0.1:3001, else bundled electron/web
 electron-builder → targets: win, mac
 ```
 
-Web and Electron share one GraphQL endpoint.
+Browser GraphQL is `/graphql` (Vite proxy → `:8080`). Desktop preload always uses `http://127.0.0.1:8080/graphql` on both Vite origin and `file://` bundles.

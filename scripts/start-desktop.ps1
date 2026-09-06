@@ -1,5 +1,12 @@
-# One-command desktop: ensure electron/web exists, start the API if needed, open the shell.
-# Prefer scripts\azula.cmd from the repo root. Do not start Vite — this packs web/dist into electron/web.
+# One-command desktop: start the API if needed, then open the Electron shell.
+# Prefer a live Vite UI (http://127.0.0.1:3001) over a stale electron/web bundle.
+# Packing web/dist is the fallback when Vite is not running.
+# Dev path (skip pack, start Vite):  scripts\azula.cmd dev  or  scripts\azula-dev.cmd
+#   powershell -File scripts/start-desktop.ps1 -Dev
+param(
+  [switch]$Dev
+)
+
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -10,9 +17,14 @@ function Show-Fail([string]$Msg) {
   exit 1
 }
 
-function Invoke-Npm([string]$WorkDir, [string]$NpmArgs) {
+function Get-Npm {
   $npm = Join-Path $env:ProgramFiles "nodejs\npm.cmd"
   if (-not (Test-Path $npm)) { $npm = "npm.cmd" }
+  return $npm
+}
+
+function Invoke-Npm([string]$WorkDir, [string]$NpmArgs) {
+  $npm = Get-Npm
   $p = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "`"$npm`" $NpmArgs") -WorkingDirectory $WorkDir -Wait -PassThru -WindowStyle Normal
   if ($p.ExitCode -ne 0) {
     Show-Fail "npm $NpmArgs başarısız (kod $($p.ExitCode))"
@@ -27,6 +39,34 @@ function Test-Port([int]$Port) {
   } catch {
     return $false
   }
+}
+
+function Start-ViteIfNeeded([int]$Seconds = 40) {
+  if (Test-Port 3001) { return $true }
+  if (-not (Test-Path (Join-Path $webDir "package.json"))) { return $false }
+  if (-not (Test-Path (Join-Path $webDir "node_modules"))) {
+    Invoke-Npm $webDir "install"
+  }
+  $npm = Get-Npm
+  Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "`"$npm`" run dev") -WorkingDirectory $webDir -WindowStyle Minimized
+  for ($i = 0; $i -lt $Seconds; $i++) {
+    if (Test-Port 3001) { return $true }
+    Start-Sleep -Seconds 1
+  }
+  return $false
+}
+
+function Ensure-Bundle {
+  if (Test-Path $bundled) { return $true }
+  if (-not (Test-Path (Join-Path $webDir "node_modules"))) {
+    Invoke-Npm $webDir "install"
+  }
+  $env:ELECTRON = "1"
+  Invoke-Npm $webDir "run build"
+  $dest = Join-Path $electronDir "web"
+  if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+  Copy-Item (Join-Path $webDir "dist") $dest -Recurse
+  return (Test-Path $bundled)
 }
 
 $electronDir = Join-Path $root "electron"
@@ -44,18 +84,21 @@ if (-not (Test-Path $electronExe)) {
   Show-Fail "Electron yüklü değil. electron klasöründe npm install çalıştır."
 }
 
-if (-not (Test-Path $bundled)) {
-  if (-not (Test-Path (Join-Path $webDir "node_modules"))) {
-    Invoke-Npm $webDir "install"
+# Browser = :3001. Desktop needs API :8080 + either live Vite or a fresh bundle.
+# Prefer Vite when it is already up. If there is no bundle, start Vite instead of a slow pack.
+if ($Dev) {
+  if (-not (Start-ViteIfNeeded)) {
+    Show-Fail "Vite :3001 açılmadı. web klasöründe npm run dev çalıştırın."
   }
-  $env:ELECTRON = "1"
-  Invoke-Npm $webDir "run build"
-  $dest = Join-Path $electronDir "web"
-  if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
-  Copy-Item (Join-Path $webDir "dist") $dest -Recurse
-}
-if (-not (Test-Path $bundled)) {
-  Show-Fail "Arayüz yok: electron\web\index.html"
+  $env:ELECTRON_WEB_URL = "http://127.0.0.1:3001"
+} elseif (Test-Port 3001) {
+  $env:ELECTRON_WEB_URL = "http://127.0.0.1:3001"
+} elseif (-not (Test-Path $bundled)) {
+  if (Start-ViteIfNeeded) {
+    $env:ELECTRON_WEB_URL = "http://127.0.0.1:3001"
+  } elseif (-not (Ensure-Bundle)) {
+    Show-Fail "Arayüz yok: Vite (:3001) veya electron\web\index.html"
+  }
 }
 
 function Wait-Api([int]$Seconds = 25) {

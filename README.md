@@ -123,15 +123,26 @@ cd web
 npm install
 npm run dev
 
-# Desktop — reliable open on Windows (packs web/dist → electron/web, starts API, opens Electron)
-# scripts\azula.cmd
-# or: powershell -File scripts/start-desktop.ps1
-# If the window cannot load the UI it shows a bilingual recovery page (run API+Vite, or pack electron/web).
+# Desktop — API must be on :8080. UI is either live Vite (:3001) or a fresh electron/web bundle.
+# Browser demo: http://localhost:3001 (Vite proxies /graphql → API :8080).
+# Desktop GraphQL is always http://127.0.0.1:8080/graphql (preload), including when the
+# window loads Vite — do not rely on the Vite /graphql proxy inside Electron.
+# scripts\azula.cmd              — if Vite is up, use it; if there is no bundle, start Vite
+#                                  instead of a slow pack; otherwise load electron/web
+# scripts\azula.cmd dev          — azula-dev path: set ELECTRON_WEB_URL=http://127.0.0.1:3001
+# scripts\azula-dev.cmd          — same as azula.cmd dev
+# powershell -File scripts/start-desktop.ps1 [-Dev]
+# If the window cannot load the UI it shows a bilingual recovery page.
+#
+# Share demo: keep API + Mongo local; tunnel only the browser UI on :3001
+#   cloudflared tunnel --url http://127.0.0.1:3001
+#   ngrok http 3001
 #
 # Dev without packing: keep API + Vite running, then:
 cd electron
 npm install
 npm start
+# or set ELECTRON_WEB_URL / WEB_URL — Electron prefers that URL over a stale bundle.
 
 # Windows installer (bundles the web UI; API still runs locally)
 powershell -File scripts/pack-electron.ps1
