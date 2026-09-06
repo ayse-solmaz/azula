@@ -44,3 +44,11 @@ func TestFileScorePrefersLeakageSources(t *testing.T) {
 		t.Fatalf("pipeline.py should rank first, got %v", ranked)
 	}
 }
+
+func TestFileScorePrefersDataQualitySources(t *testing.T) {
+	names := []string{"notes.txt", "dataset.jsonl", "pipeline.py", "readme.txt"}
+	ranked := rankNames(names, "Why did val AUC collapse after cleaning?", "data_quality")
+	if ranked[0] != "dataset.jsonl" && ranked[0] != "pipeline.py" {
+		t.Fatalf("dataset or pipeline should rank first for data_quality, got %v", ranked)
+	}
+}

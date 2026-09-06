@@ -4,9 +4,9 @@ Investigation LLM calls go through `ModelRouter` (`internal/llm`). Resolvers nev
 
 Executable strings: [`internal/llm/prompts.go`](../internal/llm/prompts.go). Short reader copy: [`internal/llm/prompts.md`](../internal/llm/prompts.md).
 
-## Few-shot from the demo log (not invented)
+## Few-shot from the sample logs (not invented)
 
-These lines are in `samples/broken-pipeline/training.log` and `pipeline.py`. Fast classification few-shot quotes them:
+These lines are in `samples/broken-pipeline/` and `samples/broken-nan-impute/`. Fast classification few-shot quotes them:
 
 ```
 WARNING Column 'customer_status' has unseen categories: ['premium', '2', 'active_new']
@@ -16,6 +16,11 @@ ERROR CUDA out of memory. Tried to allocate 2.00 GiB (GPU 0; 8.00 GiB total capa
 
 ```python
 df["target_leak"] = df["label"]
+df = df.dropna(subset=["monthly_spend"])
+```
+
+```
+WARNING Column 'monthly_spend' has 3,108 NaN values (25.1%)
 ```
 
 | Log / code | Fast `incidentType` |
@@ -24,8 +29,11 @@ df["target_leak"] = df["label"]
 | Unseen `customer_status` categories | `schema_mismatch` |
 | `target_leak = label` | `data_leakage` |
 | `learning_rate: 0.1` + val accuracy drop | `config_error` |
+| `dropna` on `monthly_spend` NaNs + class-balance flip / `val_auc` collapse | `data_quality` |
 
-The onboarding project is **composite**: all four signals exist in one folder. Council is expected to **disagree** on the *primary* cause (schema vs leak vs OOM), then flag `needsReview` rather than fake a 95% consensus.
+The onboarding project is **composite**: schema, leak, OOM, and config signals exist in one folder. Council is expected to **disagree** on the *primary* cause (schema vs leak vs OOM), then flag `needsReview` rather than fake a 95% consensus.
+
+`samples/broken-nan-impute/` is a **single-cause** hold-out twin: dropna on `monthly_spend` NaNs flips class balance and kills val AUC. Fast/Deep/Judge must rank that as **primary** and must not blend in OOM / leak / schema when those signals are absent.
 
 ## Token budget
 
@@ -45,6 +53,13 @@ Workspace overrides live on `ModelConfig` (LLM dashboard Advanced).
 
 See `SysFast`, `SysDeep`, `SysInvestigator`, `SysChallenger`, `SysJudge` in `prompts.go`.
 
+Shared rules in those templates:
+
+1. **Rank primary vs secondary.** Name one primary cause. Mention a secondary only with file evidence.
+2. **file:line evidence.** Claims need a real path, a line range, and an excerpt copied from the file.
+3. **Do not blend.** If one data-quality failure dominates, do not concatenate schema/OOM/leak into `mostLikelyCause`.
+4. **Challenger is not forced to invent a second bug.** On a single-cause folder it may agree on the primary; on the composite demo it should still pick a different primary when several independent failures are in the files.
+
 After the Judge JSON returns, **Go applies weighted voting** (`internal/llm/council.go`):
 
 1. Score = confidence × (1 + 0.12 × min(evidence count, 4))
@@ -59,10 +74,11 @@ After the Judge JSON returns, **Go applies weighted voting** (`internal/llm/coun
 |------|-----------|------|
 | `TestPipelineMCPSampleAndCouncil` | No — mocked Ollama JSON | Real files from `samples/broken-pipeline` |
 | `TestBrokenPipelineFilesRankAndPack` | No | Same folder: packing must keep OOM, schema, leak |
-| `TestGoldSetCouncilBeatsFast` | No | **3** hold-out incidents in `samples/goldset/` — keyword recall on **canned** answers |
+| `TestNanImputeFilesRankAndPack` | No | `samples/broken-nan-impute` — packing keeps dropna / monthly_spend, not composite signals |
+| `TestGoldSetCouncilBeatsFast` | No | **4** hold-out incidents in `samples/goldset/` — keyword recall on **canned** answers |
 | `TestLiveOllamaAzulaIncident` | Yes, if `AZULA_LIVE_OLLAMA=1` | broken-pipeline against local Ollama |
 
-Three gold folders are **not** an F1 benchmark. They catch “Council text names the cause keywords; a vague Fast summary does not.”
+Four gold folders are **not** an F1 benchmark. They catch “Council text names the cause keywords; a vague Fast summary does not.”
 
 ## User question
 

@@ -29,7 +29,7 @@ Default `MCP_FILE_ROOT=./uploads`
 
 ### Sample pipeline
 
-Onboarding copies files from [`samples/broken-pipeline/`](../samples/broken-pipeline/) into the sample project directory.
+Onboarding copies files from [`samples/broken-pipeline/`](../samples/broken-pipeline/) into the sample project directory. For a single-cause missing-value case, upload [`samples/broken-nan-impute/`](../samples/broken-nan-impute/) into a new project.
 
 ### Cursor MCP config (this repo)
 

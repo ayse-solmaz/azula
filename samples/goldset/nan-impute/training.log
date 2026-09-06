@@ -1,0 +1,6 @@
+WARNING Column 'monthly_spend' has 3,108 NaN values (25.1%)
+INFO dropna(subset=['monthly_spend']) dropped 3108 rows
+INFO Class balance before dropna: pos=0.42 neg=0.58
+INFO Class balance after dropna: pos=0.08 neg=0.92
+INFO Epoch 4 val_auc: 0.49 (↓ from 0.71)
+ERROR Training metric failed: val_auc 0.49 is not above chance (0.50)

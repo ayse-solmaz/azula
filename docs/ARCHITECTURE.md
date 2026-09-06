@@ -477,7 +477,9 @@ azula/
 │   └── mcp-connector/       # Files, Git connectors
 ├── docs/                    # Product docs (this folder)
 ├── samples/
-│   └── broken-pipeline/     # Onboarding demo files
+│   ├── broken-pipeline/     # Onboarding demo files
+│   ├── broken-nan-impute/   # Single-cause dropna / class-balance case
+│   └── goldset/             # Hold-out scoring incidents
 └── .cursor/
     ├── rules/
     └── skills/
