@@ -250,7 +250,7 @@ type EvalOutcome struct {
 func (r *Router) Generate(ctx context.Context, cfg domain.ModelConfig, prompt, contextBlob string) (*GeneratedDataset, error) {
 	user := fmt.Sprintf("Prompt: %s\n\nInvestigation context:\n%s\nSchema: {\"fileName\":\"fixed_dataset.jsonl\",\"schemaNote\":\"...\",\"qualityNotes\":\"...\",\"confidence\":0.0,\"rows\":[{\"field\":\"value\"}]}", prompt, contextBlob)
 	var dto GeneratedDataset
-	if err := r.completeParsed(ctx, cfg, "B", "", "You are Azula Generator. Produce a small synthetic JSONL dataset that reflects the recommended fix. 8-20 rows. "+jsonOnly, user, &dto); err != nil {
+	if err := r.completeParsed(ctx, cfg, "B", "", "You are Azula Generator. Produce a small synthetic JSONL dataset that reflects the recommended fix. 8-20 rows. Match the investigation: for dropna/NaN/impute fixes, keep numeric features like monthly_spend filled (median); do not invent customer_status/leak schemas unless the context is about those. "+jsonOnly, user, &dto); err != nil {
 		return nil, err
 	}
 	if dto.FileName == "" {

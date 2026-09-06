@@ -133,3 +133,36 @@ func TestEvaluateFallback(t *testing.T) {
 		t.Fatalf("eval: %+v", ev)
 	}
 }
+
+
+func TestFallbackGenerateNaNContext(t *testing.T) {
+	blob := "Root cause: dropna on monthly_spend NaNs flips class balance\nFix: median impute fillna"
+	out := fallbackGenerate(blob)
+	if out == nil || len(out.Rows) == 0 {
+		t.Fatal("expected rows")
+	}
+	if _, ok := out.Rows[0]["monthly_spend"]; !ok {
+		t.Fatalf("expected monthly_spend rows, got %#v", out.Rows[0])
+	}
+	if strings.Contains(strings.ToLower(out.SchemaNote), "customer_status") {
+		t.Fatalf("NaN fallback must not mention customer_status: %s", out.SchemaNote)
+	}
+}
+
+func TestFallbackGeneratePipelineContext(t *testing.T) {
+	blob := "Root cause: customer_status schema drift and target_leak column"
+	out := fallbackGenerate(blob)
+	if _, ok := out.Rows[0]["customer_status"]; !ok {
+		t.Fatalf("expected customer_status rows, got %#v", out.Rows[0])
+	}
+}
+
+func TestFallbackEvaluateNaN(t *testing.T) {
+	out := fallbackEvaluate(`{"val_auc":0.51}`, `{"customer_id":"c1","monthly_spend":120.5}`)
+	if out.Metrics[0].Name != "val_auc" {
+		t.Fatalf("metrics: %+v", out.Metrics)
+	}
+	if strings.Contains(strings.ToLower(out.Summary), "customer_status") {
+		t.Fatalf("summary: %s", out.Summary)
+	}
+}
