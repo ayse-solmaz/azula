@@ -7,6 +7,8 @@ export default defineConfig({
   server: {
     port: 3001,
     strictPort: true,
+    // Dev tunnels fail Vite 6 host check unless these suffixes are allowed.
+    allowedHosts: [".loca.lt", ".trycloudflare.com", ".ngrok-free.app", ".ngrok.io"],
     proxy: {
       "/graphql": "http://127.0.0.1:8080",
       "/auth": "http://127.0.0.1:8080",
