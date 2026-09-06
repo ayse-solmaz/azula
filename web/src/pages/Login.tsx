@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { apiOrigin, gql, getDeviceId, getDeviceName, hasSession, setToken, User } from "../api";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { apiOrigin, formatApiError, gql, getDeviceId, getDeviceName, hasSession, setToken, User } from "../api";
 import { LanguageToggle, useI18n } from "../i18n";
 
 export default function LoginPage() {
@@ -94,7 +94,7 @@ export default function LoginPage() {
       setToken(data.login.token);
       nav("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("failed"));
+      setError(formatApiError(err, t));
     } finally {
       setBusy(false);
     }
@@ -185,9 +185,6 @@ export default function LoginPage() {
         <button className="linkish" type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}>
           {mode === "login" ? t("needAccount") : t("haveAccount")}
         </button>
-        <p className="hint">
-          <Link to="/trust">{t("trustLink")}</Link>
-        </p>
       </div>
     </div>
   );
