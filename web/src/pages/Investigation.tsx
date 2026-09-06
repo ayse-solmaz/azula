@@ -10,8 +10,10 @@ import {
   deepSkipped,
   executionLabel,
   executionTone,
-  prettyStatus,
+  isCancelledRun,
+  isRunningStatus,
   roleLabel,
+  runStatusLabel,
   showCouncilDebate,
   stageCopy,
 } from "../ui";
@@ -246,6 +248,7 @@ export default function InvestigationPage() {
   const [error, setError] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileBody, setFileBody] = useState("");
+  const [stopping, setStopping] = useState(false);
 
   useEffect(() => {
     let stop = false;
@@ -259,7 +262,12 @@ export default function InvestigationPage() {
           if (!stop) setError(t("failed"));
           return;
         }
-        if (!stop) setInv(data.investigation);
+        if (!stop) {
+          setInv(data.investigation);
+          if (isCancelledRun(data.investigation) || !isRunningStatus(data.investigation.status)) {
+            setStopping(false);
+          }
+        }
         const st = data.investigation.status;
         if (st !== "COMPLETED" && st !== "FAILED") {
           const delay = st === "COUNCIL" || st === "DEEP_ANALYZE" ? 600 : 1200;
@@ -304,13 +312,33 @@ export default function InvestigationPage() {
     );
   }
   if (!inv) return <p className="page muted">{t("loadingInv")}</p>;
+  const invId = inv.id;
 
-  const running = !["COMPLETED", "FAILED"].includes(inv.status);
+  const cancelled = isCancelledRun(inv);
+  const running = isRunningStatus(inv.status) && !cancelled;
   const view = councilViewState(inv);
-  const debate = showCouncilDebate(inv);
+  const debate = showCouncilDebate(inv) && !cancelled;
   const judged = Boolean(inv.councilResult?.finalJudgment?.mostLikelyCause);
   const hasCouncilModels = (inv.councilResult?.models?.length ?? 0) > 0;
-  const councilFailed = inv.status === "FAILED" && !inv.councilResult;
+  const councilFailed = inv.status === "FAILED" && !inv.councilResult && !cancelled;
+
+  async function stopRun() {
+    if (stopping || !running) return;
+    setStopping(true);
+    try {
+      const data = await gql<{ cancelInvestigation: Investigation }>(
+        `mutation ($id: ID!) { cancelInvestigation(id: $id) { ${INV_FIELDS} } }`,
+        { id: invId }
+      );
+      setInv(data.cancelInvestigation);
+      if (isCancelledRun(data.cancelInvestigation) || !isRunningStatus(data.cancelInvestigation.status)) {
+        setStopping(false);
+      }
+    } catch (e) {
+      setStopping(false);
+      setError(e instanceof Error ? e.message : t("cancelFail"));
+    }
+  }
   const skipped = deepSkipped(inv);
   const fastPct = Math.round((inv.fastResult?.confidence ?? 0) * 100);
 
@@ -336,7 +364,7 @@ export default function InvestigationPage() {
               </span>
             </div>
           ))}
-          {running ? <p className="pulse">{stageCopy(inv.status, t)}</p> : null}
+          {stopping ? <p className="pulse">{t("statusStopping")}</p> : running ? <p className="pulse">{stageCopy(inv.status, t)}</p> : null}
         </div>
         {skipped ? (
           <div className="skip-note">
@@ -356,23 +384,13 @@ export default function InvestigationPage() {
             <p>{inv.escalationReason}</p>
           </div>
         ) : null}
-        <p className="hint">{t("status", { s: prettyStatus(inv.status, t) })}</p>
-        {running && (
-          <div className="project-actions">
-            <button
-              type="button"
-              className="danger"
-              onClick={() => {
-                void gql<{ cancelInvestigation: Investigation }>(
-                  `mutation ($id: ID!) { cancelInvestigation(id: $id) { ${INV_FIELDS} } }`,
-                  { id: inv.id }
-                )
-                  .then((d) => setInv(d.cancelInvestigation))
-                  .catch((e) => setError(e instanceof Error ? e.message : t("cancelFail")));
-              }}
-            >
-              {t("stopAgent")}
+        <p className="hint">{t("status", { s: stopping ? t("statusStopping") : runStatusLabel(inv, t) })}</p>
+        {(running || stopping) && (
+          <div className="stop-bar">
+            <button type="button" className="danger" disabled={stopping} onClick={() => void stopRun()}>
+              {stopping ? t("statusStopping") : t("stopAgent")}
             </button>
+            <p className="hint">{t("stopHint")}</p>
           </div>
         )}
         {inv.executionMode && (inv.executionMode || "").toLowerCase() !== "live" ? (
@@ -419,6 +437,25 @@ export default function InvestigationPage() {
         </p>
       </aside>
       <section className="stack">
+        {(running || stopping) && (
+          <article className="panel stop-panel">
+            <div className="stop-bar">
+              <div>
+                <h2>{stopping ? t("statusStopping") : t("stopAgent")}</h2>
+                <p className="hint">{t("stopHint")}</p>
+              </div>
+              <button type="button" className="danger" disabled={stopping} onClick={() => void stopRun()}>
+                {stopping ? t("statusStopping") : t("stopAgent")}
+              </button>
+            </div>
+          </article>
+        )}
+        {cancelled && (
+          <article className="panel">
+            <h2>{t("runCancelled")}</h2>
+            <p className="flag">{t("runCancelledBody")}</p>
+          </article>
+        )}
         {inv.status === "COMPLETED" && (inv.councilResult?.finalJudgment || inv.deepResult) ? (
           <article className="panel findings-hero">
             <p className="eyebrow">{t("findingsEyebrow")}</p>

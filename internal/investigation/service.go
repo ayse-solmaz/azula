@@ -2,8 +2,10 @@ package investigation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/ayse-solmaz/azula/internal/config"
@@ -22,6 +24,7 @@ type Service struct {
 	cfg      config.Config
 	gate     Gate
 	audit    Auditor
+	runs     sync.Map // investigation ID → context.CancelFunc
 }
 
 type Gate interface {
@@ -145,6 +148,11 @@ func (s *Service) Cancel(ctx context.Context, userID, id string) (*domain.Invest
 	case domain.StatusCompleted, domain.StatusFailed:
 		return inv, nil
 	}
+	if fn, ok := s.runs.Load(id); ok {
+		if cancel, ok := fn.(context.CancelFunc); ok {
+			cancel()
+		}
+	}
 	inv.Status = domain.StatusFailed
 	inv.ErrorMessage = domain.ErrCancelled.Error()
 	inv.UpdatedAt = time.Now().UTC()
@@ -155,20 +163,71 @@ func (s *Service) Cancel(ctx context.Context, userID, id string) (*domain.Invest
 	return inv, nil
 }
 
-func (s *Service) halted(ctx context.Context, inv *domain.Investigation) error {
-	if s.Halted() {
-		inv.Status = domain.StatusFailed
-		inv.ErrorMessage = domain.ErrAgentHalted.Error()
-		inv.UpdatedAt = time.Now().UTC()
-		_ = s.invs.Update(ctx, inv)
-		return domain.ErrAgentHalted
+func aborted(err error) bool {
+	return err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, domain.ErrCancelled))
+}
+
+func cancelled(inv *domain.Investigation) bool {
+	if inv == nil || inv.ErrorMessage == "" {
+		return false
 	}
+	return inv.ErrorMessage == domain.ErrCancelled.Error()
+}
+
+func (s *Service) persist(inv *domain.Investigation) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
 	cur, err := s.invs.GetByID(ctx, inv.ID)
 	if err != nil {
 		return err
 	}
-	if cur.Status == domain.StatusFailed {
+	if cancelled(cur) {
 		*inv = *cur
+		return domain.ErrCancelled
+	}
+	inv.UpdatedAt = time.Now().UTC()
+	return s.invs.Update(ctx, inv)
+}
+
+func (s *Service) ensureCancelled(inv *domain.Investigation) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	cur, err := s.invs.GetByID(ctx, inv.ID)
+	if err == nil && cancelled(cur) {
+		*inv = *cur
+		return
+	}
+	inv.Status = domain.StatusFailed
+	inv.ErrorMessage = domain.ErrCancelled.Error()
+	inv.UpdatedAt = time.Now().UTC()
+	_ = s.invs.Update(ctx, inv)
+}
+
+func (s *Service) halted(workCtx context.Context, inv *domain.Investigation) error {
+	if s.Halted() {
+		inv.Status = domain.StatusFailed
+		inv.ErrorMessage = domain.ErrAgentHalted.Error()
+		inv.UpdatedAt = time.Now().UTC()
+		_ = s.persist(inv)
+		return domain.ErrAgentHalted
+	}
+	if err := workCtx.Err(); aborted(err) {
+		s.ensureCancelled(inv)
+		return domain.ErrCancelled
+	} else if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	cur, err := s.invs.GetByID(ctx, inv.ID)
+	if err != nil {
+		return err
+	}
+	if cancelled(cur) || cur.Status == domain.StatusFailed {
+		*inv = *cur
+		if cancelled(cur) {
+			return domain.ErrCancelled
+		}
 		return domain.ErrCancelled
 	}
 	return nil
@@ -177,15 +236,30 @@ func (s *Service) halted(ctx context.Context, inv *domain.Investigation) error {
 func (s *Service) runAsync(id string) {
 	defer s.router.Release()
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.RequestTimeout+2*time.Minute)
-	defer cancel()
-	inv, err := s.invs.GetByID(ctx, id)
+	workCtx, workCancel := context.WithCancel(ctx)
+	s.runs.Store(id, workCancel)
+	defer func() {
+		workCancel()
+		cancel()
+		s.runs.Delete(id)
+	}()
+	db, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
+	inv, err := s.invs.GetByID(db, id)
+	dbCancel()
 	if err != nil {
 		return
 	}
-	if err := s.runPipeline(ctx, inv); err != nil {
+	if err := s.runPipeline(workCtx, inv); err != nil {
+		if aborted(err) {
+			s.ensureCancelled(inv)
+			return
+		}
+		if cancelled(inv) {
+			return
+		}
 		inv.Status = domain.StatusFailed
 		inv.ErrorMessage = err.Error()
-		_ = s.invs.Update(ctx, inv)
+		_ = s.persist(inv)
 	}
 }
 
@@ -430,7 +504,9 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 	if ollamaNames, listErr := llm.ListOllamaModels(ctx, s.cfg.OllamaBaseURL); listErr == nil {
 		inv.ModelBName = llm.PickModelB(ollamaNames, mcfg.ModelBName)
 	}
-	_ = s.invs.Update(ctx, inv)
+	if err := s.persist(inv); err != nil {
+		return err
+	}
 
 	if err := s.halted(ctx, inv); err != nil {
 		return err
@@ -438,6 +514,10 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 
 	select {
 	case <-ctx.Done():
+		if aborted(ctx.Err()) {
+			s.ensureCancelled(inv)
+			return domain.ErrCancelled
+		}
 		return ctx.Err()
 	case <-time.After(700 * time.Millisecond):
 	}
@@ -445,17 +525,25 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 	if err := s.transition(inv, domain.StatusPending, domain.StatusFastClassify); err != nil {
 		return err
 	}
-	_ = s.invs.Update(ctx, inv)
+	if err := s.persist(inv); err != nil {
+		return err
+	}
 
 	var fallback []string
 	fast, err := s.router.Classify(ctx, mcfg, invCtx)
+	if aborted(err) {
+		s.ensureCancelled(inv)
+		return domain.ErrCancelled
+	}
 	if err != nil {
 		log.Printf("investigation %s: fast LLM fallback: %v", inv.ID, err)
 		fast = fallbackFast()
 		fallback = append(fallback, "fast")
 	}
 	inv.FastResult = fast
-	_ = s.invs.Update(ctx, inv)
+	if err := s.persist(inv); err != nil {
+		return err
+	}
 	if err := s.halted(ctx, inv); err != nil {
 		return err
 	}
@@ -471,7 +559,7 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 				return err
 			}
 			log.Printf("investigation %s: free-tier skip deep (%s)", inv.ID, inv.EscalationReason)
-			return s.invs.Update(ctx, inv)
+			return s.persist(inv)
 		}
 	}
 
@@ -480,7 +568,9 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 	if err := s.transition(inv, domain.StatusFastClassify, domain.StatusDeepAnalyze); err != nil {
 		return err
 	}
-	_ = s.invs.Update(ctx, inv)
+	if err := s.persist(inv); err != nil {
+		return err
+	}
 
 	ranked := rankNames(names, inv.Prompt, fast.IncidentType)
 	contents, order, err := readRanked(ctx, s.files, inv.ProjectID, ranked, ContextChars)
@@ -504,12 +594,18 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 		s.logAudit(ctx, inv.UserID, "mcp.read", inv.ProjectID+":"+n)
 	}
 	invCtx.FileContents = contents
-	_ = s.invs.Update(ctx, inv)
+	if err := s.persist(inv); err != nil {
+		return err
+	}
 	if err := s.halted(ctx, inv); err != nil {
 		return err
 	}
 
 	deep, err := s.router.Analyze(ctx, mcfg, invCtx)
+	if aborted(err) {
+		s.ensureCancelled(inv)
+		return domain.ErrCancelled
+	}
 	if err != nil || deep == nil || len(deep.Evidence) == 0 {
 		if err != nil {
 			log.Printf("investigation %s: deep LLM fallback: %v", inv.ID, err)
@@ -518,13 +614,17 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 		fallback = append(fallback, "deep")
 	}
 	inv.DeepResult = deep
-	_ = s.invs.Update(ctx, inv)
+	if err := s.persist(inv); err != nil {
+		return err
+	}
 
 	if err := s.transition(inv, domain.StatusDeepAnalyze, domain.StatusCouncil); err != nil {
 		return err
 	}
 	s.markStep(inv, len(inv.Plan)-1, domain.StepRunning)
-	_ = s.invs.Update(ctx, inv)
+	if err := s.persist(inv); err != nil {
+		return err
+	}
 	if err := s.halted(ctx, inv); err != nil {
 		return err
 	}
@@ -534,9 +634,12 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 			return
 		}
 		inv.CouncilResult = partial
-		inv.UpdatedAt = time.Now().UTC()
-		_ = s.invs.Update(ctx, inv)
+		_ = s.persist(inv)
 	})
+	if aborted(err) {
+		s.ensureCancelled(inv)
+		return domain.ErrCancelled
+	}
 	if err != nil || council == nil || len(council.Agreements) == 0 {
 		if err != nil {
 			log.Printf("investigation %s: council LLM fallback: %v", inv.ID, err)
@@ -554,7 +657,7 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 	if err := s.transition(inv, domain.StatusCouncil, domain.StatusCompleted); err != nil {
 		return err
 	}
-	return s.invs.Update(ctx, inv)
+	return s.persist(inv)
 }
 
 func (s *Service) forceCouncilOnProject(ctx context.Context, projectID string) bool {

@@ -84,6 +84,17 @@ export function isRunningStatus(status?: string | null) {
   return ["PENDING", "FAST_CLASSIFY", "DEEP_ANALYZE", "COUNCIL"].includes(s);
 }
 
+export function isCancelledRun(inv?: Pick<Investigation, "status" | "errorMessage"> | null) {
+  if (!inv) return false;
+  const msg = (inv.errorMessage || "").toLowerCase();
+  return msg.includes("cancelled") || msg.includes("canceled");
+}
+
+export function runStatusLabel(inv: Pick<Investigation, "status" | "errorMessage">, t?: Translate) {
+  if (isCancelledRun(inv)) return t ? t("statusCancelled") : "Cancelled";
+  return prettyStatus(inv.status, t);
+}
+
 export function prettyStatus(status?: string | null, t?: Translate) {
   if (!status) return t ? t("notStarted") : "Not started";
   switch (status.toUpperCase()) {
@@ -246,6 +257,8 @@ export function stageCopy(status: string, t?: Translate) {
       return t ? t("stageDone") : "Investigation complete";
     case "FAILED":
       return t ? t("stageFail") : "Investigation failed";
+    case "STOPPING":
+      return t ? t("statusStopping") : "Stopping…";
     default:
       return status.replaceAll("_", " ");
   }
