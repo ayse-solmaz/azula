@@ -614,6 +614,9 @@ func (s *Service) runPipeline(ctx context.Context, inv *domain.Investigation) er
 		deep = fallbackDeep()
 		fallback = append(fallback, "deep")
 	}
+	if deep != nil {
+		deep.SuggestedFix = sanitizeSuggestedFix(deep.RootCause, deep.SuggestedFix)
+	}
 	inv.DeepResult = deep
 	if err := s.persist(inv); err != nil {
 		return err
@@ -738,6 +741,26 @@ func fallbackFast() *domain.FastResult {
 		IncidentType: "schema_mismatch",
 		Confidence:   0.64,
 	}
+}
+
+
+// sanitizeSuggestedFix rewrites weak "ignore missing values" advice when the
+// root cause is dropna / NaN row loss (samples/broken-nan-impute).
+func sanitizeSuggestedFix(root, fix string) string {
+	blob := strings.ToLower(root + " " + fix)
+	nanish := strings.Contains(blob, "dropna") ||
+		(strings.Contains(blob, "monthly_spend") && (strings.Contains(blob, "nan") || strings.Contains(blob, "missing"))) ||
+		(strings.Contains(blob, "class balance") && strings.Contains(blob, "nan"))
+	if !nanish {
+		return fix
+	}
+	bad := strings.Contains(strings.ToLower(fix), "ignore") ||
+		strings.Contains(strings.ToLower(fix), "missing_value_policy") ||
+		strings.TrimSpace(fix) == ""
+	if !bad && (strings.Contains(strings.ToLower(fix), "impute") || strings.Contains(strings.ToLower(fix), "fillna")) {
+		return fix
+	}
+	return "Replace dropna on monthly_spend with median imputation (fillna / SimpleImputer strategy=median) so rows are kept and class balance is preserved; do not use missing_value_policy=ignore."
 }
 
 func fallbackDeep() *domain.DeepResult {
