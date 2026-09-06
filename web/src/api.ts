@@ -16,7 +16,11 @@ function migrateLegacyDesktopToken() {
 
 export function formatApiError(e: unknown, t: (key: "apiDown" | "failed", vars?: Record<string, string | number>) => string) {
   const msg = e instanceof Error ? e.message : String(e || "");
-  if (/failed to fetch|cannot reach api|networkerror|load failed|econnrefused|failed to fetc/i.test(msg)) {
+  if (
+    /failed to fetch|cannot reach api|networkerror|load failed|econnrefused|failed to fetc|api 502|api 503|api 504|bad gateway/i.test(
+      msg
+    )
+  ) {
     return t("apiDown");
   }
   return msg || t("failed");
