@@ -40,8 +40,10 @@ The onboarding project is **composite**: schema, leak, OOM, and config signals e
 | Stage | What is sent | Budget |
 |-------|----------------|--------|
 | Fast | User question + **file names only** | Tiny (no file bodies) |
-| Deep / Council | Ranked MCP files, compacted | ~24k characters (~6k tokens at 4 chars/token) |
-| Per file | Cap 8k chars | Logs: hierarchical extract, not a blind prefix |
+| Deep | Ranked MCP files, compacted | ~24k characters (~6k tokens at 4 chars/token) |
+| Council Investigator | Prior Fast/Deep brief + **cited** file snippets only | ~2.5k snippet budget — no full Deep re-read |
+| Council Challenger | Prior brief + compact files | ~8k characters (`AZULA_COUNCIL_CONTEXT_CHARS`) |
+| Per file | Cap 8k chars (Deep) | Logs: hierarchical extract, not a blind prefix |
 
 **Logs:** keep ERROR/WARNING/OOM/traceback lines plus the first and last 40 lines. Omitted regions are marked `...`. Secrets (keys, JWTs, private key blocks) are redacted. Packed files are wrapped as **untrusted retrieved data**.
 
@@ -59,6 +61,8 @@ Shared rules in those templates:
 2. **file:line evidence.** Claims need a real path, a line range, and an excerpt copied from the file.
 3. **Do not blend.** If one data-quality failure dominates, do not concatenate schema/OOM/leak into `mostLikelyCause`.
 4. **Challenger is not forced to invent a second bug.** On a single-cause folder it may agree on the primary; on the composite demo it should still pick a different primary when several independent failures are in the files.
+
+`AZULA_COUNCIL_FAST=true` (default) keeps Challenger on the small Fast model so a single Ollama GPU does not swap in a 7B+ diverse family during Council. Set `false` to restore family-diversity routing. Investigator reuses the Deep brief plus cited snippets (no second full-file pass). Challenger gets a compact ~8k pack. Both start in parallel; each agent has a 25s timeout (`AZULA_COUNCIL_AGENT_TIMEOUT`) and a 512-token cap. Partial hypotheses are persisted so the UI can render them before the Judge finishes.
 
 After the Judge JSON returns, **Go applies weighted voting** (`internal/llm/council.go`):
 

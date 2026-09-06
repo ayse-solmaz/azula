@@ -73,7 +73,7 @@ func (r *Router) completeJSON(ctx context.Context, cfg domain.ModelConfig, slot,
 	case "openai":
 		return r.openai(ctx, model, system, user, temp, cfg.MaxTokens)
 	default:
-		return r.ollama(ctx, model, system, user, temp)
+		return r.ollama(ctx, model, system, user, temp, cfg.MaxTokens)
 	}
 }
 
@@ -122,13 +122,18 @@ func (r *Router) resolveSlot(ctx context.Context, cfg domain.ModelConfig, slot, 
 	return provider, model
 }
 
-func (r *Router) ollama(ctx context.Context, model, system, user string, temp float64) (string, error) {
+func (r *Router) ollama(ctx context.Context, model, system, user string, temp float64, maxTokens int) (string, error) {
+	options := map[string]any{
+		"temperature": temp,
+	}
+	if maxTokens > 0 {
+		options["num_predict"] = maxTokens
+	}
 	body := map[string]any{
-		"model":  model,
-		"stream": false,
-		"options": map[string]any{
-			"temperature": temp,
-		},
+		"model":      model,
+		"stream":     false,
+		"keep_alive": "10m",
+		"options":    options,
 		"messages": []map[string]string{
 			{"role": "system", "content": system},
 			{"role": "user", "content": user},

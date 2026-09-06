@@ -24,9 +24,11 @@ User payload: compacted file bodies (logs keep errors + head/tail, ~24k characte
 
 | Role | Who | Instruction in one line |
 |------|-----|-------------------------|
-| Investigator | Model B | One **primary** hypothesis, defend it with file:line evidence |
-| Challenger | Other Ollama family if installed | Stress-test; invent no OOM/leak/schema when those signals are absent |
+| Investigator | Model B | Refine Deep’s **primary** hypothesis with cited snippets + file:line evidence — not a full file re-read |
+| Challenger | Fast model by default (`AZULA_COUNCIL_FAST`); other Ollama family if that flag is off | Stress-test; compact ~8k pack; invent no OOM/leak/schema when those signals are absent |
 | Judge | OpenAI Model C if `OPENAI_API_KEY` is set, else Model A | Rank primary vs secondary; keep real disagreements; do not concatenate unrelated bugs |
+
+Investigator and Challenger start together. Hypotheses are saved as each finishes so the Investigate page can show them while Judge runs.
 
 After Judge JSON, Go runs weighted vote (`council.go`): `consensus` / `echo_chamber` / `disagreement`. Confidence below 0.7 also sets `needsReview` (human look).
 

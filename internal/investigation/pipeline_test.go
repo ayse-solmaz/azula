@@ -32,6 +32,7 @@ func repoRoot(t *testing.T) string {
 func TestPipelineMCPSampleAndCouncil(t *testing.T) {
 	var mu sync.Mutex
 	var models []string
+	var invUser, chalUser string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/tags" {
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -68,8 +69,15 @@ func TestPipelineMCPSampleAndCouncil(t *testing.T) {
 				user = m.Content
 			}
 		}
-		if !strings.Contains(user, "training.log") && !strings.Contains(user, "CUDA") && !strings.Contains(sys, "Judge") && !strings.Contains(sys, "Investigator") && !strings.Contains(sys, "Challenger") && !strings.Contains(sys, "Fast") {
-			// still ok — classify may only list filenames
+		if strings.Contains(sys, "Azula Investigator") {
+			mu.Lock()
+			invUser = user
+			mu.Unlock()
+		}
+		if strings.Contains(sys, "You are the Challenger") {
+			mu.Lock()
+			chalUser = user
+			mu.Unlock()
 		}
 
 		var payload string
@@ -78,9 +86,9 @@ func TestPipelineMCPSampleAndCouncil(t *testing.T) {
 			payload = `{"summary":"Schema warning and GPU OOM","incidentType":"schema_mismatch","confidence":0.61}`
 		case strings.Contains(sys, "Deep"):
 			payload = `{"rootCause":"Schema drift in customer_status plus batch_size OOM","confidence":0.88,"evidence":[{"file":"training.log","lines":"3-11","excerpt":"CUDA out of memory"}],"suggestedFix":"Fix encoding and reduce batch_size"}`
-		case strings.Contains(sys, "Investigator"):
+		case strings.Contains(sys, "Azula Investigator"):
 			payload = `{"role":"investigator","hypothesis":"Schema drift in customer_status","confidence":0.89,"evidence":[{"file":"dataset.jsonl","lines":"1-8","excerpt":"mixed int/string customer_status"}]}`
-		case strings.Contains(sys, "Challenger"):
+		case strings.Contains(sys, "You are the Challenger"):
 			payload = `{"role":"challenger","hypothesis":"Target leakage in pipeline.py","confidence":0.72,"evidence":[{"file":"pipeline.py","lines":"15-19","excerpt":"target_leak = df[label]"}]}`
 		default:
 			payload = `{"agreements":["Both see data quality issues"],"disagreements":[{"topic":"Root cause","investigator":"schema drift","challenger":"target leakage"}],"finalJudgment":{"mostLikelyCause":"Schema drift in customer_status","confidence":0.91,"recommendedAction":"Fix schema, drop leak, reduce batch_size"}}`
@@ -196,6 +204,18 @@ func TestPipelineMCPSampleAndCouncil(t *testing.T) {
 	}
 	if done.EscalationReason == "" || !strings.Contains(strings.ToLower(done.EscalationReason), "deep look") {
 		t.Fatalf("escalationReason=%q", done.EscalationReason)
+	}
+	mu.Lock()
+	gotInv, gotChal := invUser, chalUser
+	mu.Unlock()
+	if !strings.Contains(gotInv, "Prior analysis") {
+		t.Fatalf("investigator should reuse Deep, got %q", clip(gotInv, 240))
+	}
+	if strings.Contains(gotInv, "=== BEGIN UNTRUSTED FILE dataset.jsonl") {
+		t.Fatal("investigator should not re-read the full Deep file dump")
+	}
+	if !strings.Contains(gotChal, "pipeline.py") && !strings.Contains(gotChal, "training.log") {
+		t.Fatalf("challenger should still see compact files, got %q", clip(gotChal, 240))
 	}
 }
 
@@ -334,9 +354,9 @@ func TestHighConfidenceStillRunsDeepAndCouncil(t *testing.T) {
 		switch {
 		case strings.Contains(sys, "Deep"):
 			payload = `{"rootCause":"CUDA OOM from batch_size","confidence":0.9,"evidence":[{"file":"training.log","lines":"1-8","excerpt":"CUDA out of memory"}],"suggestedFix":"Reduce batch_size"}`
-		case strings.Contains(sys, "Investigator"):
+		case strings.Contains(sys, "Azula Investigator"):
 			payload = `{"role":"investigator","hypothesis":"GPU OOM from batch_size","confidence":0.9,"evidence":[{"file":"training.log","lines":"1-8","excerpt":"CUDA out of memory"}]}`
-		case strings.Contains(sys, "Challenger"):
+		case strings.Contains(sys, "You are the Challenger"):
 			payload = `{"role":"challenger","hypothesis":"Memory leak in the training loop","confidence":0.6,"evidence":[{"file":"config.yaml","lines":"1-4","excerpt":"batch_size"}]}`
 		case strings.Contains(sys, "Judge"):
 			payload = `{"agreements":["Both mention memory pressure"],"disagreements":[{"topic":"Root cause","investigator":"OOM","challenger":"leak"}],"finalJudgment":{"mostLikelyCause":"CUDA OOM from batch_size","confidence":0.88,"recommendedAction":"Reduce batch_size"}}`
@@ -409,9 +429,9 @@ func TestSampleForcesCouncilDespiteHighFast(t *testing.T) {
 			payload = `{"summary":"Clear schema drift","incidentType":"schema_mismatch","confidence":0.90}`
 		case strings.Contains(sys, "Deep"):
 			payload = `{"rootCause":"Schema drift in customer_status","confidence":0.88,"evidence":[{"file":"training.log","lines":"3-11","excerpt":"unseen categories"}],"suggestedFix":"Re-encode"}`
-		case strings.Contains(sys, "Investigator"):
+		case strings.Contains(sys, "Azula Investigator"):
 			payload = `{"role":"investigator","hypothesis":"Schema drift in customer_status","confidence":0.89,"evidence":[{"file":"dataset.jsonl","lines":"1-8","excerpt":"mixed types"}]}`
-		case strings.Contains(sys, "Challenger"):
+		case strings.Contains(sys, "You are the Challenger"):
 			payload = `{"role":"challenger","hypothesis":"Target leakage in pipeline.py","confidence":0.72,"evidence":[{"file":"pipeline.py","lines":"15-19","excerpt":"target_leak"}]}`
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]string{"content": payload}})

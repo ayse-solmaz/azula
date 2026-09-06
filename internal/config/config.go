@@ -54,6 +54,10 @@ type Config struct {
 	GraphQLPlayground    bool
 	KillSwitch           bool
 	ForceCouncilOnSample bool
+	CouncilFast          bool
+	CouncilContextChars  int
+	CouncilAgentTimeout  time.Duration
+	CouncilMaxTokens     int
 }
 
 func Load() Config {
@@ -61,6 +65,18 @@ func Load() Config {
 	timeout, err := time.ParseDuration(getenv("LLM_REQUEST_TIMEOUT", "60s"))
 	if err != nil {
 		timeout = 60 * time.Second
+	}
+	councilTimeout, err := time.ParseDuration(getenv("AZULA_COUNCIL_AGENT_TIMEOUT", "25s"))
+	if err != nil || councilTimeout < time.Second {
+		councilTimeout = 25 * time.Second
+	}
+	councilChars, err := strconv.Atoi(getenv("AZULA_COUNCIL_CONTEXT_CHARS", "8000"))
+	if err != nil || councilChars < 1000 {
+		councilChars = 8000
+	}
+	councilTokens, err := strconv.Atoi(getenv("AZULA_COUNCIL_MAX_TOKENS", "512"))
+	if err != nil || councilTokens < 128 {
+		councilTokens = 512
 	}
 	slots, err := strconv.Atoi(getenv("LLM_WORKER_SLOTS", "5"))
 	if err != nil || slots < 1 {
@@ -128,6 +144,10 @@ func Load() Config {
 		GraphQLPlayground:    showPlayground,
 		KillSwitch:           getenv("AZULA_KILL_SWITCH", "false") == "true",
 		ForceCouncilOnSample: getenv("AZULA_FORCE_COUNCIL_SAMPLE", "true") != "false",
+		CouncilFast:          getenv("AZULA_COUNCIL_FAST", "true") != "false",
+		CouncilContextChars:  councilChars,
+		CouncilAgentTimeout:  councilTimeout,
+		CouncilMaxTokens:     councilTokens,
 	}
 }
 

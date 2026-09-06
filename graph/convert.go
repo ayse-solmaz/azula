@@ -209,8 +209,12 @@ func gqlInvestigation(inv *domain.Investigation) *model.Investigation {
 		if agg == "" {
 			agg = "unknown"
 		}
+		agreements := inv.CouncilResult.Agreements
+		if agreements == nil {
+			agreements = []string{}
+		}
 		out.CouncilResult = &model.CouncilResult{
-			Models: models, Agreements: inv.CouncilResult.Agreements, Disagreements: dis,
+			Models: models, Agreements: agreements, Disagreements: dis,
 			Aggregation: agg, NeedsReview: inv.CouncilResult.NeedsReview, AggregationNote: inv.CouncilResult.AggregationNote,
 			FinalJudgment: &model.FinalJudgment{
 				MostLikelyCause:   inv.CouncilResult.FinalJudgment.MostLikelyCause,

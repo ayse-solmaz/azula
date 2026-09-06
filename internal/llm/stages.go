@@ -2,8 +2,11 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ayse-solmaz/azula/internal/config"
 	"github.com/ayse-solmaz/azula/internal/domain"
@@ -57,9 +60,19 @@ func (r *Router) Analyze(ctx context.Context, cfg domain.ModelConfig, invCtx dom
 	return &domain.DeepResult{RootCause: dto.RootCause, Confidence: clamp01(dto.Confidence), Evidence: dto.Evidence, SuggestedFix: dto.SuggestedFix}, nil
 }
 
+// CouncilProgress receives a partial Council result as Investigator / Challenger finish.
+type CouncilProgress func(*domain.CouncilResult)
+
 func (r *Router) RunCouncil(ctx context.Context, cfg domain.ModelConfig, invCtx domain.InvestigationContext, fast *domain.FastResult, deep *domain.DeepResult) (*domain.CouncilResult, error) {
-	files := PackFiles(invCtx.FileContents)
-	brief := fmt.Sprintf("Fast classification: %+v\nDeep analysis: %+v\n\n", fast, deep)
+	return r.RunCouncilProgress(ctx, cfg, invCtx, fast, deep, nil)
+}
+
+func (r *Router) RunCouncilProgress(ctx context.Context, cfg domain.ModelConfig, invCtx domain.InvestigationContext, fast *domain.FastResult, deep *domain.DeepResult, onPartial CouncilProgress) (*domain.CouncilResult, error) {
+	chalBudget := r.cfg.CouncilContextChars
+	if chalBudget <= 0 {
+		chalBudget = CouncilBudgetChars
+	}
+	chalFiles := PackFilesBudget(invCtx.FileContents, chalBudget)
 	available, _ := ListOllamaModels(ctx, r.cfg.OllamaBaseURL)
 	route := r.routeCouncil(cfg, available)
 
@@ -76,6 +89,18 @@ func (r *Router) RunCouncil(ctx context.Context, cfg domain.ModelConfig, invCtx 
 		judgeSys = SysJudge
 	}
 
+	hypCfg := cfg
+	if n := r.cfg.CouncilMaxTokens; n > 0 {
+		hypCfg.MaxTokens = n
+	} else if hypCfg.MaxTokens <= 0 || hypCfg.MaxTokens > 512 {
+		hypCfg.MaxTokens = 512
+	}
+
+	agentTO := r.cfg.CouncilAgentTimeout
+	if agentTO <= 0 {
+		agentTO = 25 * time.Second
+	}
+
 	type hyp struct {
 		out domain.CouncilModel
 		err error
@@ -83,24 +108,60 @@ func (r *Router) RunCouncil(ctx context.Context, cfg domain.ModelConfig, invCtx 
 	invCh := make(chan hyp, 1)
 	chalCh := make(chan hyp, 1)
 
+	var progMu sync.Mutex
+	var invModel, chalModel *domain.CouncilModel
+	emitPartial := func() {
+		if onPartial == nil {
+			return
+		}
+		res := emptyPartialCouncil()
+		if invModel != nil {
+			res.Models = append(res.Models, *invModel)
+		}
+		if chalModel != nil {
+			res.Models = append(res.Models, *chalModel)
+		}
+		onPartial(res)
+	}
+
+	// Investigator first so a single Ollama GPU keeps the Deep model loaded,
+	// then Challenger immediately — both run concurrently.
 	go func() {
 		var dto domain.CouncilModel
-		err := r.completeParsed(ctx, cfg, route.InvestigatorSlot, "", invSys, brief+councilHypUser(invCtx.Prompt, files, investigatorSchema()), &dto)
+		agentCtx, cancel := context.WithTimeout(ctx, agentTO)
+		defer cancel()
+		err := r.completeParsed(agentCtx, hypCfg, route.InvestigatorSlot, "", invSys, investigatorUser(invCtx.Prompt, fast, deep, invCtx.FileContents), &dto)
 		dto.Role = "investigator"
 		dto.Model = route.InvestigatorName
+		if err == nil {
+			dto.Confidence = clamp01(dto.Confidence)
+			progMu.Lock()
+			invModel = &dto
+			emitPartial()
+			progMu.Unlock()
+		}
 		invCh <- hyp{out: dto, err: err}
 	}()
 	go func() {
 		var dto domain.CouncilModel
-		chalCfg := cfg
+		chalCfg := hypCfg
 		override := ""
 		if route.ChallengerSlot == "B" && route.ChallengerName != "" {
 			override = route.ChallengerName
 			chalCfg.ModelBName = route.ChallengerName
 		}
-		err := r.completeParsed(ctx, chalCfg, route.ChallengerSlot, override, chalSys, brief+councilHypUser(invCtx.Prompt, files, challengerSchema()), &dto)
+		agentCtx, cancel := context.WithTimeout(ctx, agentTO)
+		defer cancel()
+		err := r.completeParsed(agentCtx, chalCfg, route.ChallengerSlot, override, chalSys, challengerUser(invCtx.Prompt, chalFiles, fast, deep), &dto)
 		dto.Role = "challenger"
 		dto.Model = route.ChallengerName
+		if err == nil {
+			dto.Confidence = clamp01(dto.Confidence)
+			progMu.Lock()
+			chalModel = &dto
+			emitPartial()
+			progMu.Unlock()
+		}
 		chalCh <- hyp{out: dto, err: err}
 	}()
 
@@ -118,9 +179,17 @@ func (r *Router) RunCouncil(ctx context.Context, cfg domain.ModelConfig, invCtx 
 		Disagreements []domain.Disagreement `json:"disagreements"`
 		FinalJudgment domain.FinalJudgment  `json:"finalJudgment"`
 	}
-	judgeUser := fmt.Sprintf("Investigator (%s): %+v\nChallenger (%s): %+v\nSameFamily=%v\n%s",
-		inv.out.Model, inv.out, chal.out.Model, chal.out, route.SameFamily, judgeSchema())
-	if err := r.completeParsed(ctx, cfg, route.JudgeSlot, "", judgeSys, judgeUser, &dto); err != nil {
+	judgeUser := fmt.Sprintf("Investigator (%s): role=%s hypothesis=%s confidence=%.2f evidence=%d\nChallenger (%s): role=%s hypothesis=%s confidence=%.2f evidence=%d\nSameFamily=%v\n%s",
+		inv.out.Model, inv.out.Role, inv.out.Hypothesis, inv.out.Confidence, len(inv.out.Evidence),
+		chal.out.Model, chal.out.Role, chal.out.Hypothesis, chal.out.Confidence, len(chal.out.Evidence),
+		route.SameFamily, judgeSchema())
+	judgeCfg := cfg
+	if n := r.cfg.CouncilMaxTokens; n > 0 && (judgeCfg.MaxTokens <= 0 || judgeCfg.MaxTokens > n+400) {
+		judgeCfg.MaxTokens = n + 400
+	}
+	judgeCtx, cancel := context.WithTimeout(ctx, agentTO)
+	defer cancel()
+	if err := r.completeParsed(judgeCtx, judgeCfg, route.JudgeSlot, "", judgeSys, judgeUser, &dto); err != nil {
 		return nil, fmt.Errorf("judge: %w", err)
 	}
 	if dto.Agreements == nil {
@@ -140,6 +209,14 @@ func (r *Router) RunCouncil(ctx context.Context, cfg domain.ModelConfig, invCtx 
 	}
 	ApplyAggregation(res, route.SameFamily)
 	return res, nil
+}
+
+func emptyPartialCouncil() *domain.CouncilResult {
+	return &domain.CouncilResult{
+		Models:        []domain.CouncilModel{},
+		Agreements:    []string{},
+		Disagreements: []domain.Disagreement{},
+	}
 }
 
 type GeneratedDataset struct {
@@ -186,6 +263,12 @@ func (r *Router) Evaluate(ctx context.Context, cfg domain.ModelConfig, prompt, o
 func (r *Router) completeParsed(ctx context.Context, cfg domain.ModelConfig, slot, modelOverride, system, user string, dest any) error {
 	var last error
 	for attempt := 0; attempt < 2; attempt++ {
+		if err := ctx.Err(); err != nil {
+			if last != nil {
+				return last
+			}
+			return err
+		}
 		sys := system
 		if attempt == 1 {
 			sys += " STRICT: output must be valid minified JSON starting with {."
@@ -193,6 +276,9 @@ func (r *Router) completeParsed(ctx context.Context, cfg domain.ModelConfig, slo
 		text, err := r.completeJSON(ctx, cfg, slot, modelOverride, sys, user)
 		if err != nil {
 			last = err
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || ctx.Err() != nil {
+				return err
+			}
 			continue
 		}
 		if err := DecodeModelJSON(text, dest); err != nil {

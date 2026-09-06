@@ -73,12 +73,17 @@ func (r *Router) routeCouncil(cfg domain.ModelConfig, available []string) Counci
 	}
 	chalName := cfg.ModelAName
 	chalSlot := "A"
-	if diverse := PickDiverse(available, invName); diverse != "" {
-		chalName = diverse
-		chalSlot = "B"
-	} else if ModelFamily(cfg.ModelAName) != ModelFamily(invName) {
-		chalName = cfg.ModelAName
-		chalSlot = "A"
+	// Fast council (default): keep Challenger on the small Fast model so a
+	// single Ollama GPU does not load a 7B+ diverse model next to Investigator.
+	// Set AZULA_COUNCIL_FAST=false to restore family-diversity routing.
+	if !r.cfg.CouncilFast {
+		if diverse := PickDiverse(available, invName); diverse != "" {
+			chalName = diverse
+			chalSlot = "B"
+		} else if ModelFamily(cfg.ModelAName) != ModelFamily(invName) {
+			chalName = cfg.ModelAName
+			chalSlot = "A"
+		}
 	}
 	judgeSlot := "A"
 	judgeName := cfg.ModelAName

@@ -107,7 +107,7 @@ The MVP is **not** a full platform. It is a focused proof that Azula's core valu
 **So that** I trust the conclusion more than a single model answer
 
 **Acceptance criteria:**
-- [ ] Investigator and Challenger use **different model families** when Ollama has them (Qwen vs Mistral, not Qwen vs Qwen-QLoRA alone)
+- [ ] Investigator and Challenger use **different model families** when Ollama has them **and** `AZULA_COUNCIL_FAST=false` (Qwen vs Mistral). The demo default keeps Challenger on the small Fast model so Council does not load a second large local model.
 - [ ] Investigator model produces hypothesis + confidence + evidence
 - [ ] Challenger model questions Investigator and proposes alternative
 - [ ] Judge produces: agreements, disagreements, final judgment

@@ -9,7 +9,8 @@ import (
 	"github.com/ayse-solmaz/azula/internal/mcp"
 )
 
-// ContextChars is the Deep/Council prompt budget (~6k tokens at 4 chars/token).
+// ContextChars is the Deep MCP read budget (~6k tokens at 4 chars/token).
+// Council Challenger uses llm.CouncilBudgetChars; Investigator reuses Deep.
 const ContextChars = 24000
 
 const perFileChars = 8000

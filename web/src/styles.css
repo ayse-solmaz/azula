@@ -600,6 +600,18 @@ label {
   gap: var(--space-4);
   max-width: 1280px;
 }
+.stop-bar {
+  display: grid;
+  gap: 0.5rem;
+}
+.stop-panel .stop-bar {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.stop-panel .stop-bar h2 { margin: 0; font-size: 1.05rem; }
+.stop-bar button.danger { width: 100%; }
+.stop-panel .stop-bar button.danger { width: auto; min-width: 12rem; }
 
 .plan ol { list-style: none; padding: 0; margin: 0; }
 .plan li { display: flex; gap: 0.6rem; margin: 0.7rem 0; font-weight: 400; color: var(--muted); }
@@ -1016,7 +1028,7 @@ html, body, #root, h1, h2, h3, p, li, label, span, td, th, dt, dd, summary, a, b
 }
 
 @media (max-width: 900px) {
-  .inv-layout, .council, .debate, .council-wait, .metrics, .form-grid, .compare-grid, .row, .project-meta, .split-list li, .vote-meter, .account-layout {
+  .inv-layout, .council, .debate, .council-wait, .metrics, .form-grid, .compare-grid, .row, .project-meta, .split-list li, .vote-meter, .account-layout, .stop-panel .stop-bar {
     grid-template-columns: 1fr;
   }
   .account-nav { position: static; flex-direction: row; flex-wrap: wrap; }
