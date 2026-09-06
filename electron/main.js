@@ -2,14 +2,14 @@ const { app, BrowserWindow, ipcMain, safeStorage, session } = require("electron"
 const fs = require("fs");
 const path = require("path");
 const { randomUUID } = require("crypto");
+const { DEFAULT_VITE_URL, pickWebTarget } = require("./resolve-web");
 
-const WEB_URL = process.env.ELECTRON_WEB_URL || process.env.WEB_URL || "http://localhost:3001";
 const API_GRAPHQL = process.env.AZULA_GRAPHQL || "http://127.0.0.1:8080/graphql";
 
 app.disableHardwareAcceleration();
 
 let memoryToken = "";
-let lastTarget = { kind: "url", value: WEB_URL };
+let lastTarget = { kind: "url", value: DEFAULT_VITE_URL };
 
 function sessionFile() {
   return path.join(app.getPath("userData"), "session.bin");
@@ -102,9 +102,9 @@ function recoveryHTML(tried, reason) {
 <body>
   <h1>Azula açılamadı / Could not open Azula</h1>
   <p><strong>Türkçe.</strong> Masaüstü penceresi arayüzü yükleyemedi. İki yol var:</p>
-  <p>(a) API ve web’i yerelde çalıştırın: <code>go run ./cmd/api</code> ve <code>cd web && npm run dev</code> — adres <code>http://localhost:3001</code>.</p>
-  <p>(b) Paketi derleyin ki <code>electron/web</code> oluşsun: <code>scripts\\azula.cmd</code> veya <code>scripts\\start-desktop.ps1</code>.</p>
-  <p class="muted"><strong>English.</strong> The desktop window could not load the UI. Either (a) run the API and web locally (<code>go run ./cmd/api</code> and <code>cd web && npm run dev</code> at <code>http://localhost:3001</code>), or (b) build/pack so <code>electron/web</code> exists (<code>scripts\\azula.cmd</code> or <code>scripts\\start-desktop.ps1</code>).</p>
+  <p>(a) API ve Vite: <code>go run ./cmd/api</code> ve <code>cd web && npm run dev</code> — veya <code>scripts\\azula-dev.cmd</code> / <code>scripts\\azula.cmd dev</code>.</p>
+  <p>(b) Taze paket: <code>scripts\\azula.cmd</code> (eski <code>electron/web</code> yerine Vite açıksa o kullanılır).</p>
+  <p class="muted"><strong>English.</strong> The desktop window could not load the UI. Either (a) run API + Vite (<code>go run ./cmd/api</code> and <code>cd web && npm run dev</code>, or <code>scripts\\azula-dev.cmd</code>), or (b) pack a fresh <code>electron/web</code>. Live Vite at <code>http://127.0.0.1:3001</code> is preferred over a stale bundle.</p>
   <div class="box">
     <p>Denenen adres / URL tried: <code>${esc(tried)}</code></p>
     <p class="muted">${esc(reason)}</p>
@@ -130,6 +130,14 @@ function loadTarget(win) {
     return win.loadFile(lastTarget.value);
   }
   return win.loadURL(lastTarget.value);
+}
+
+async function resolveLastTarget() {
+  lastTarget = await pickWebTarget({
+    env: process.env,
+    bundledPath: path.join(__dirname, "web", "index.html"),
+  });
+  return lastTarget;
 }
 
 function createWindow() {
@@ -158,16 +166,11 @@ function createWindow() {
     showRecovery(win, url || lastTarget.value, `${code} ${desc}`.trim());
   });
 
-  const bundled = path.join(__dirname, "web", "index.html");
-  if (fs.existsSync(bundled)) {
-    lastTarget = { kind: "file", value: bundled };
-  } else {
-    lastTarget = { kind: "url", value: WEB_URL };
-  }
-
-  loadTarget(win).catch((err) => {
-    showRecovery(win, lastTarget.value, String(err));
-  });
+  resolveLastTarget()
+    .then(() => loadTarget(win))
+    .catch((err) => {
+      showRecovery(win, lastTarget.value, String(err));
+    });
 
   return win;
 }
@@ -196,9 +199,11 @@ app.whenReady().then(() => {
       event.returnValue = false;
       return;
     }
-    loadTarget(win).catch((err) => {
-      showRecovery(win, lastTarget.value, String(err));
-    });
+    resolveLastTarget()
+      .then(() => loadTarget(win))
+      .catch((err) => {
+        showRecovery(win, lastTarget.value, String(err));
+      });
     event.returnValue = true;
   });
   createWindow();

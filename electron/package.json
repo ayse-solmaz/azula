@@ -20,6 +20,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "resolve-web.js",
       "web/**/*"
     ],
     "win": { "target": "nsis" },

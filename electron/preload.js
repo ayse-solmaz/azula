@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+// Always an absolute API URL — same path for file:// (bundled) and Vite
+// (http://127.0.0.1:3001). Do not use the Vite /graphql proxy from the shell;
+// main.js also attaches the session Authorization header on :8080.
 contextBridge.exposeInMainWorld("azulaDesktop", {
   shell: true,
   graphqlUrl: () => ipcRenderer.sendSync("azula:gql") || "http://127.0.0.1:8080/graphql",

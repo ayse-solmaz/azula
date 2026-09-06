@@ -252,7 +252,7 @@ Store `plan[]` on Investigation document; UI checks off each step.
 
 ```
 electron/
-  main.js       — BrowserWindow → bundled web/ or localhost:3001
+  main.js       — BrowserWindow → env URL or live :3001, else bundled web/
   preload.js    — device id + GraphQL URL
   package.json  — electron-builder win (nsis) + mac (dmg, unsigned)
 ```
@@ -263,8 +263,8 @@ electron/
 | macOS | `bash scripts/pack-electron.sh` on a Mac | Unsigned `.dmg`. **Cannot be produced on Windows.** |
 | Mac without a Mac | GitHub Actions workflow `desktop` (`macos-latest`) | Download the Actions artifact. Still unsigned (no Apple Developer ID). |
 
-Dev: `localhost:3001` (API must be running).  
-Packaged: static files under `electron/web/` (copied from `web/dist`, gitignored). API is still local `localhost:8080`.
+Dev: live Vite at `http://127.0.0.1:3001` is preferred when `ELECTRON_WEB_URL` / `WEB_URL` is set or `:3001` responds (API must be on `:8080`).  
+Packaged: static files under `electron/web/` (copied from `web/dist`, gitignored) when Vite is not running. API is still local `localhost:8080`. Desktop GraphQL is always `http://127.0.0.1:8080/graphql`.
 
 ---
 
